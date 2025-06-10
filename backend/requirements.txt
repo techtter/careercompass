@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+supabase
+python-dotenv
+clerk-python
+svix
+openai
+langchain
+langchain-openai 
