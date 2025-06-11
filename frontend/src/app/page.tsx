@@ -23,11 +23,18 @@ export default function HomePage() {
           <div className="flex justify-between items-center h-16">
             {/* Logo */}
             <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M12 2L2 7V17L12 22L22 17V7L12 2Z" stroke="white" strokeWidth="2" strokeLinejoin="round"/>
-                  <path d="M12 12V22" stroke="white" strokeWidth="2"/>
-                  <path d="M2 7L12 12L22 7" stroke="white" strokeWidth="2"/>
+              <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-xl flex items-center justify-center shadow-lg">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="12" cy="12" r="10" stroke="white" strokeWidth="2" fill="none"/>
+                  <path d="m9 12 2 2 4-4" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M12 2v2" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+                  <path d="M12 20v2" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+                  <path d="M2 12h2" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+                  <path d="M20 12h2" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+                  <path d="M4.93 4.93l1.41 1.41" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+                  <path d="M17.66 17.66l1.41 1.41" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+                  <path d="M19.07 4.93l-1.41 1.41" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+                  <path d="M6.34 17.66l-1.41 1.41" stroke="white" strokeWidth="2" strokeLinecap="round"/>
                 </svg>
               </div>
               <span className="text-xl font-bold text-gray-900">Career Compass AI</span>
@@ -184,11 +191,18 @@ export default function HomePage() {
           <div className="grid md:grid-cols-4 gap-8">
             <div>
               <div className="flex items-center space-x-2 mb-4">
-                <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+                <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-lg flex items-center justify-center shadow-lg">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M12 2L2 7V17L12 22L22 17V7L12 2Z" stroke="white" strokeWidth="2" strokeLinejoin="round"/>
-                    <path d="M12 12V22" stroke="white" strokeWidth="2"/>
-                    <path d="M2 7L12 12L22 7" stroke="white" strokeWidth="2"/>
+                    <circle cx="12" cy="12" r="10" stroke="white" strokeWidth="2" fill="none"/>
+                    <path d="m9 12 2 2 4-4" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M12 2v2" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+                    <path d="M12 20v2" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+                    <path d="M2 12h2" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+                    <path d="M20 12h2" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+                    <path d="M4.93 4.93l1.41 1.41" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+                    <path d="M17.66 17.66l1.41 1.41" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+                    <path d="M19.07 4.93l-1.41 1.41" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+                    <path d="M6.34 17.66l-1.41 1.41" stroke="white" strokeWidth="2" strokeLinecap="round"/>
                   </svg>
                 </div>
                 <span className="text-xl font-bold">Career Compass AI</span>

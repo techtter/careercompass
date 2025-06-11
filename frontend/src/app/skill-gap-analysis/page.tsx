@@ -76,7 +76,24 @@ export default function SkillGapAnalysisPage() {
                         <Link href="/dashboard" className="text-blue-600 hover:text-blue-800">
                             ← Back to Dashboard
                         </Link>
-                        <h1 className="text-2xl font-bold text-gray-900">Skill Gap Analysis</h1>
+                        <div className="flex items-center space-x-3">
+                            {/* Beautiful Compass Logo */}
+                            <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-lg flex items-center justify-center shadow-lg">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <circle cx="12" cy="12" r="10" stroke="white" strokeWidth="2" fill="none"/>
+                                    <path d="m9 12 2 2 4-4" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                    <path d="M12 2v2" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+                                    <path d="M12 20v2" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+                                    <path d="M2 12h2" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+                                    <path d="M20 12h2" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+                                    <path d="M4.93 4.93l1.41 1.41" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+                                    <path d="M17.66 17.66l1.41 1.41" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+                                    <path d="M19.07 4.93l-1.41 1.41" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+                                    <path d="M6.34 17.66l-1.41 1.41" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+                                </svg>
+                            </div>
+                            <h1 className="text-2xl font-bold text-gray-900">Skill Gap Analysis</h1>
+                        </div>
                     </div>
                     <div className="flex items-center space-x-4">
                         <span className="text-gray-600">Welcome, {user?.firstName || "User"}!</span>

@@ -1,203 +1,219 @@
 import os
-from supabase import create_client, Client
-from dotenv import load_dotenv
-from typing import Optional, Dict, Any
-import json
+from typing import Dict, List, Optional, Any
 from datetime import datetime
+import json
 
-load_dotenv()
+# Load environment variables
+url = os.getenv("SUPABASE_URL")
+key = os.getenv("SUPABASE_ANON_KEY")
 
-url: str = os.environ.get("SUPABASE_URL")
-key: str = os.environ.get("SUPABASE_ANON_KEY") or os.environ.get("SUPABASE_KEY")
+# Global variable to track database availability
+database_available = False
+supabase = None
 
-# To get your SUPABASE_URL and SUPABASE_ANON_KEY, go to your Supabase project's
-# API settings: Project Settings -> API -> Project API keys
+# Try to initialize Supabase connection
+if url and key and url != "https://placeholder.supabase.co" and key != "placeholder_key_for_development" and key != "placeholder_key":
+    try:
+        from supabase import create_client, Client
+        supabase: Client = create_client(url, key)
+        # Test the connection
+        try:
+            supabase.table("test_connection").select("*").limit(1).execute()
+            database_available = True
+            print("✅ Database connected successfully")
+        except Exception:
+            print("⚠️  Database connection test failed, using fallback mode")
+            database_available = False
+    except Exception as e:
+        print(f"⚠️  Database not available: {e}")
+        database_available = False
+else:
+    print("⚠️  Database credentials not configured, using fallback mode")
 
-if not url or not key:
-    raise ValueError("Supabase URL and Key must be set in environment variables")
-
-supabase: Client = create_client(url, key)
+# Mock data for when database is not available
+MOCK_USER_DATA = {
+    # Removed all mock user data - no dummy profiles will be shown
+}
 
 class CVRecordService:
-    """Service for managing CV records in Supabase"""
-    
     @staticmethod
-    def create_cv_record(
-        user_id: str,
-        filename: str,
-        file_content: bytes,
-        file_type: str,
-        raw_text: str,
-        parsed_data: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Create a new CV record in Supabase"""
-        try:
-            # Convert file content to base64 for storage
-            import base64
-            file_content_b64 = base64.b64encode(file_content).decode('utf-8')
-            
-            cv_data = {
-                "user_id": user_id,
-                "filename": filename,
-                "file_content": file_content_b64,
-                "file_type": file_type,
-                "raw_text": raw_text,
-                "name": parsed_data.get("name"),
-                "email": parsed_data.get("email"),
-                "phone": parsed_data.get("phone"),
-                "location": parsed_data.get("location"),
-                "experience": parsed_data.get("experience"),
-                "skills": json.dumps(parsed_data.get("skills", [])),
-                "education": parsed_data.get("education"),
-                "last_two_jobs": json.dumps(parsed_data.get("lastTwoJobs", [])),
-                "summary": parsed_data.get("summary"),
-                "created_at": datetime.utcnow().isoformat(),
-                "updated_at": datetime.utcnow().isoformat()
+    def create_cv_record(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        if not database_available:
+            # Return mock success response
+            user_id = data.get("user_id", "user_1")
+            MOCK_USER_DATA[user_id] = {
+                "id": len(MOCK_USER_DATA) + 1,
+                **data,
+                "created_at": datetime.now().isoformat(),
+                "updated_at": datetime.now().isoformat()
             }
-            
-            result = supabase.table("cv_records").insert(cv_data).execute()
-            return result.data[0] if result.data else None
+            return MOCK_USER_DATA[user_id]
+        
+        try:
+            result = supabase.table("cv_records").insert(data).execute()
+            if result.data:
+                return result.data[0]
         except Exception as e:
             print(f"Error creating CV record: {e}")
-            return None
-    
+        return None
+
     @staticmethod
     def get_cv_record_by_user(user_id: str) -> Optional[Dict[str, Any]]:
-        """Get the latest CV record for a user"""
+        if not database_available:
+            # Return mock data if available for this user
+            return MOCK_USER_DATA.get(user_id)
+        
         try:
-            result = supabase.table("cv_records").select("*").eq("user_id", user_id).order("created_at", desc=True).limit(1).execute()
-            return result.data[0] if result.data else None
+            result = supabase.table("cv_records").select("*").eq("user_id", user_id).execute()
+            if result.data:
+                return result.data[0]
         except Exception as e:
             print(f"Error getting CV record: {e}")
-            return None
-    
+        return None
+
     @staticmethod
-    def get_cv_record_by_id(cv_id: int) -> Optional[Dict[str, Any]]:
-        """Get a CV record by ID"""
+    def get_cv_record_by_id(record_id: int) -> Optional[Dict[str, Any]]:
+        if not database_available:
+            # Find mock data by ID
+            for user_data in MOCK_USER_DATA.values():
+                if user_data.get("id") == record_id:
+                    return user_data
+            return None
+        
         try:
-            result = supabase.table("cv_records").select("*").eq("id", cv_id).execute()
-            return result.data[0] if result.data else None
+            result = supabase.table("cv_records").select("*").eq("id", record_id).execute()
+            if result.data:
+                return result.data[0]
         except Exception as e:
-            print(f"Error getting CV record: {e}")
-            return None
-    
+            print(f"Error getting CV record by ID: {e}")
+        return None
+
     @staticmethod
-    def update_cv_record(cv_id: int, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Update a CV record"""
+    def update_cv_record(record_id: int, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        if not database_available:
+            # Update mock data
+            for user_id, user_data in MOCK_USER_DATA.items():
+                if user_data.get("id") == record_id:
+                    MOCK_USER_DATA[user_id].update(data)
+                    MOCK_USER_DATA[user_id]["updated_at"] = datetime.now().isoformat()
+                    return MOCK_USER_DATA[user_id]
+            return None
+        
         try:
-            updates["updated_at"] = datetime.utcnow().isoformat()
-            result = supabase.table("cv_records").update(updates).eq("id", cv_id).execute()
-            return result.data[0] if result.data else None
+            data["updated_at"] = datetime.now().isoformat()
+            result = supabase.table("cv_records").update(data).eq("id", record_id).execute()
+            if result.data:
+                return result.data[0]
         except Exception as e:
             print(f"Error updating CV record: {e}")
-            return None
+        return None
+
+    @staticmethod
+    def get_all_cv_records_by_user(user_id: str) -> List[Dict[str, Any]]:
+        if not database_available:
+            user_data = MOCK_USER_DATA.get(user_id)
+            return [user_data] if user_data else []
+        
+        try:
+            result = supabase.table("cv_records").select("*").eq("user_id", user_id).execute()
+            return result.data if result.data else []
+        except Exception as e:
+            print(f"Error getting all CV records: {e}")
+            return []
 
 class CareerPathService:
-    """Service for managing career path records"""
-    
     @staticmethod
-    def create_career_path(
-        cv_record_id: int,
-        user_id: str,
-        job_title: str,
-        experience_level: str,
-        career_path_data: str
-    ) -> Dict[str, Any]:
-        """Create a new career path record"""
+    def create_career_path(cv_record_id: int, user_id: str, job_title: str, experience_level: str, career_path_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        if not database_available:
+            return {"id": 1, "cv_record_id": cv_record_id, "user_id": user_id, "job_title": job_title}
+        
         try:
             data = {
                 "cv_record_id": cv_record_id,
                 "user_id": user_id,
                 "job_title": job_title,
                 "experience_level": experience_level,
-                "career_path_data": career_path_data,
-                "created_at": datetime.utcnow().isoformat()
+                "career_path_data": json.dumps(career_path_data),
+                "created_at": datetime.now().isoformat()
             }
-            
             result = supabase.table("career_paths").insert(data).execute()
             return result.data[0] if result.data else None
         except Exception as e:
             print(f"Error creating career path: {e}")
             return None
-    
+
     @staticmethod
-    def get_career_paths_by_user(user_id: str):
-        """Get career paths for a user"""
+    def get_career_paths_by_user(user_id: str) -> List[Dict[str, Any]]:
+        if not database_available:
+            return []
+        
         try:
-            result = supabase.table("career_paths").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
-            return result.data
+            result = supabase.table("career_paths").select("*").eq("user_id", user_id).execute()
+            return result.data if result.data else []
         except Exception as e:
             print(f"Error getting career paths: {e}")
             return []
 
 class SkillGapService:
-    """Service for managing skill gap analysis records"""
-    
     @staticmethod
-    def create_skill_gap(
-        cv_record_id: int,
-        user_id: str,
-        job_description: str,
-        analysis_data: str
-    ) -> Dict[str, Any]:
-        """Create a new skill gap analysis record"""
+    def create_skill_gap(cv_record_id: int, user_id: str, job_description: str, analysis_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        if not database_available:
+            return {"id": 1, "cv_record_id": cv_record_id, "user_id": user_id}
+        
         try:
             data = {
                 "cv_record_id": cv_record_id,
                 "user_id": user_id,
                 "job_description": job_description,
-                "analysis_data": analysis_data,
-                "created_at": datetime.utcnow().isoformat()
+                "analysis_data": json.dumps(analysis_data),
+                "created_at": datetime.now().isoformat()
             }
-            
             result = supabase.table("skill_gaps").insert(data).execute()
             return result.data[0] if result.data else None
         except Exception as e:
-            print(f"Error creating skill gap analysis: {e}")
+            print(f"Error creating skill gap: {e}")
             return None
-    
+
     @staticmethod
-    def get_skill_gaps_by_user(user_id: str):
-        """Get skill gap analyses for a user"""
+    def get_skill_gaps_by_user(user_id: str) -> List[Dict[str, Any]]:
+        if not database_available:
+            return []
+        
         try:
-            result = supabase.table("skill_gaps").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
-            return result.data
+            result = supabase.table("skill_gaps").select("*").eq("user_id", user_id).execute()
+            return result.data if result.data else []
         except Exception as e:
             print(f"Error getting skill gaps: {e}")
             return []
 
 class ResumeOptimizationService:
-    """Service for managing resume optimization records"""
-    
     @staticmethod
-    def create_resume_optimization(
-        cv_record_id: int,
-        user_id: str,
-        job_description: str,
-        optimization_data: str
-    ) -> Dict[str, Any]:
-        """Create a new resume optimization record"""
+    def create_resume_optimization(cv_record_id: int, user_id: str, job_description: str, optimization_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        if not database_available:
+            return {"id": 1, "cv_record_id": cv_record_id, "user_id": user_id}
+        
         try:
             data = {
                 "cv_record_id": cv_record_id,
                 "user_id": user_id,
                 "job_description": job_description,
-                "optimization_data": optimization_data,
-                "created_at": datetime.utcnow().isoformat()
+                "optimization_data": json.dumps(optimization_data),
+                "created_at": datetime.now().isoformat()
             }
-            
             result = supabase.table("resume_optimizations").insert(data).execute()
             return result.data[0] if result.data else None
         except Exception as e:
             print(f"Error creating resume optimization: {e}")
             return None
-    
+
     @staticmethod
-    def get_resume_optimizations_by_user(user_id: str):
-        """Get resume optimizations for a user"""
+    def get_resume_optimizations_by_user(user_id: str) -> List[Dict[str, Any]]:
+        if not database_available:
+            return []
+        
         try:
-            result = supabase.table("resume_optimizations").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
-            return result.data
+            result = supabase.table("resume_optimizations").select("*").eq("user_id", user_id).execute()
+            return result.data if result.data else []
         except Exception as e:
             print(f"Error getting resume optimizations: {e}")
             return [] 
