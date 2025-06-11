@@ -14,7 +14,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <ClerkProvider>
+    <ClerkProvider
+      afterSignInUrl="/dashboard"
+      afterSignUpUrl="/dashboard"
+      signInUrl="/login"
+      signUpUrl="/signup"
+    >
       <html lang="en">
         <body className="font-sans antialiased">
           {children}

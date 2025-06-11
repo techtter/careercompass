@@ -1,7 +1,11 @@
 import os
+from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Make sure to set your OPENAI_API_KEY in your .env file
 # You can get your key from https://platform.openai.com/account/api-keys
@@ -97,4 +101,43 @@ def optimize_resume(resume_text: str, job_description: str):
     chain = LLMChain(llm=llm, prompt=prompt)
     response = chain.run(resume_text=resume_text, job_description=job_description)
 
+    return response
+
+def parse_resume_content(resume_text: str):
+    """
+    Intelligently parses resume content using AI to extract structured information.
+    """
+    prompt = PromptTemplate(
+        input_variables=["resume_text"],
+        template="""
+        As an expert resume parser, analyze the following resume text and extract key information in a structured JSON format.
+
+        Resume Text:
+        {resume_text}
+
+        Please extract and return the following information in a JSON format:
+        {{
+            "name": "Full name of the person",
+            "email": "Email address if available",
+            "phone": "Phone number if available", 
+            "location": "Location/address if available",
+            "experience": "Total years of experience (estimate if not explicit)",
+            "skills": ["array", "of", "technical", "and", "professional", "skills"],
+            "lastTwoJobs": ["Most recent job title", "Second most recent job title"],
+            "education": "Highest education level or most relevant degree",
+            "summary": "Brief professional summary (2-3 sentences)"
+        }}
+
+        Instructions:
+        - If information is not available, use null for that field
+        - For experience, provide your best estimate in years (e.g., "5 years", "2-3 years")
+        - For skills, include both technical and soft skills mentioned
+        - For lastTwoJobs, extract the actual job titles, not company names
+        - Return only valid JSON, no additional text or explanations
+        """
+    )
+
+    chain = LLMChain(llm=llm, prompt=prompt)
+    response = chain.run(resume_text=resume_text)
+    
     return response 

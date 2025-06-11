@@ -1,9 +1,11 @@
 fastapi
-uvicorn[standard]
-supabase
+uvicorn
 python-dotenv
-clerk-python
-svix
+python-multipart
+python-docx
+PyPDF2
 openai
 langchain
-langchain-openai 
+langchain-openai
+supabase
+postgrest 
