@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import React from "react";
 import "./globals.css";
 import { ClerkProvider } from "@clerk/nextjs";
+import { ThemeProvider } from "@/contexts/ThemeContext";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
 
 export const metadata: Metadata = {
   title: "Career Compass AI",
@@ -20,9 +22,12 @@ export default function RootLayout({
       signInUrl="/login"
       signUpUrl="/signup"
     >
-      <html lang="en">
+      <html lang="en" suppressHydrationWarning>
         <body className="font-sans antialiased">
-          {children}
+          <ThemeProvider>
+            <ThemeToggle />
+            {children}
+          </ThemeProvider>
         </body>
       </html>
     </ClerkProvider>

@@ -23,30 +23,30 @@ const SkillsWordCloud: React.FC<SkillsWordCloudProps> = ({ skills, className = "
 
   // Color palette for skills
   const colors = [
-    'text-blue-600',
-    'text-green-600', 
-    'text-purple-600',
-    'text-red-600',
-    'text-yellow-600',
-    'text-indigo-600',
-    'text-pink-600',
-    'text-teal-600',
-    'text-orange-600',
-    'text-cyan-600'
+    'text-blue-600 dark:text-blue-400',
+    'text-green-600 dark:text-green-400', 
+    'text-purple-600 dark:text-purple-400',
+    'text-red-600 dark:text-red-400',
+    'text-yellow-600 dark:text-yellow-400',
+    'text-indigo-600 dark:text-indigo-400',
+    'text-pink-600 dark:text-pink-400',
+    'text-teal-600 dark:text-teal-400',
+    'text-orange-600 dark:text-orange-400',
+    'text-cyan-600 dark:text-cyan-400'
   ];
 
   // Background colors for skill bubbles
   const bgColors = [
-    'bg-blue-100 border-blue-300',
-    'bg-green-100 border-green-300',
-    'bg-purple-100 border-purple-300', 
-    'bg-red-100 border-red-300',
-    'bg-yellow-100 border-yellow-300',
-    'bg-indigo-100 border-indigo-300',
-    'bg-pink-100 border-pink-300',
-    'bg-teal-100 border-teal-300',
-    'bg-orange-100 border-orange-300',
-    'bg-cyan-100 border-cyan-300'
+    'bg-blue-100 dark:bg-blue-900/30 border-blue-300 dark:border-blue-600',
+    'bg-green-100 dark:bg-green-900/30 border-green-300 dark:border-green-600',
+    'bg-purple-100 dark:bg-purple-900/30 border-purple-300 dark:border-purple-600', 
+    'bg-red-100 dark:bg-red-900/30 border-red-300 dark:border-red-600',
+    'bg-yellow-100 dark:bg-yellow-900/30 border-yellow-300 dark:border-yellow-600',
+    'bg-indigo-100 dark:bg-indigo-900/30 border-indigo-300 dark:border-indigo-600',
+    'bg-pink-100 dark:bg-pink-900/30 border-pink-300 dark:border-pink-600',
+    'bg-teal-100 dark:bg-teal-900/30 border-teal-300 dark:border-teal-600',
+    'bg-orange-100 dark:bg-orange-900/30 border-orange-300 dark:border-orange-600',
+    'bg-cyan-100 dark:bg-cyan-900/30 border-cyan-300 dark:border-cyan-600'
   ];
 
   useEffect(() => {
@@ -88,22 +88,22 @@ const SkillsWordCloud: React.FC<SkillsWordCloudProps> = ({ skills, className = "
   if (skills.length === 0) {
     return (
       <div className={`text-center py-8 ${className}`}>
-        <p className="text-gray-500 italic">No skills found</p>
+        <p className="text-gray-500 dark:text-gray-400 italic">No skills found</p>
       </div>
     );
   }
 
   return (
-    <div className={`relative w-full h-96 overflow-hidden rounded-lg bg-gradient-to-br from-gray-50 to-blue-50 border border-gray-200 ${className}`}>
+    <div className={`relative w-full h-96 overflow-hidden rounded-lg bg-gradient-to-br from-gray-50 to-blue-50 dark:from-gray-800 dark:to-blue-900/20 border border-gray-200 dark:border-gray-700 ${className}`}>
       {/* Animated background particles */}
       <div className="absolute inset-0">
         {[...Array(30)].map((_, i) => (
           <div
             key={i}
             className={`absolute rounded-full opacity-20 animate-pulse ${
-              i % 3 === 0 ? 'w-2 h-2 bg-blue-400' : 
-              i % 3 === 1 ? 'w-1 h-1 bg-purple-400' : 
-              'w-1.5 h-1.5 bg-green-400'
+              i % 3 === 0 ? 'w-2 h-2 bg-blue-400 dark:bg-blue-500' : 
+              i % 3 === 1 ? 'w-1 h-1 bg-purple-400 dark:bg-purple-500' : 
+              'w-1.5 h-1.5 bg-green-400 dark:bg-green-500'
             }`}
             style={{
               left: `${Math.random() * 100}%`,
@@ -121,10 +121,10 @@ const SkillsWordCloud: React.FC<SkillsWordCloudProps> = ({ skills, className = "
           <div
             key={i}
             className={`absolute opacity-10 animate-float ${
-              i % 4 === 0 ? 'w-8 h-8 bg-blue-300 rounded-full' :
-              i % 4 === 1 ? 'w-6 h-6 bg-purple-300 rotate-45' :
-              i % 4 === 2 ? 'w-10 h-10 bg-green-300 rounded-full' :
-              'w-4 h-4 bg-yellow-300 rotate-12'
+              i % 4 === 0 ? 'w-8 h-8 bg-blue-300 dark:bg-blue-600 rounded-full' :
+              i % 4 === 1 ? 'w-6 h-6 bg-purple-300 dark:bg-purple-600 rotate-45' :
+              i % 4 === 2 ? 'w-10 h-10 bg-green-300 dark:bg-green-600 rounded-full' :
+              'w-4 h-4 bg-yellow-300 dark:bg-yellow-600 rotate-12'
             }`}
             style={{
               left: `${Math.random() * 100}%`,
