@@ -8,43 +8,169 @@ and AI-powered matching to deliver personalized job recommendations.
 import asyncio
 import json
 import random
+import os
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 
+# Import real job API services
+try:
+    from job_api_services import JobAggregator, validate_job_posting, check_job_availability
+    REAL_APIS_AVAILABLE = True
+except ImportError:
+    REAL_APIS_AVAILABLE = False
+    print("⚠️  Real job APIs not available, using mock data")
+
 def _extract_country_from_location(location: str) -> str:
     """
-    Extract country name from location string.
+    Extract country name from location string using word boundaries to prevent partial matches.
     """
     if not location:
         return ""
     
     location_lower = location.lower()
     
-    # Country mapping
-    country_mapping = {
-        'usa': 'United States', 'us': 'United States', 'america': 'United States', 'united states': 'United States',
-        'uk': 'United Kingdom', 'britain': 'United Kingdom', 'england': 'United Kingdom', 'united kingdom': 'United Kingdom',
-        'canada': 'Canada', 'germany': 'Germany', 'france': 'France', 'spain': 'Spain',
-        'italy': 'Italy', 'netherlands': 'Netherlands', 'belgium': 'Belgium',
-        'switzerland': 'Switzerland', 'austria': 'Austria', 'sweden': 'Sweden',
-        'norway': 'Norway', 'denmark': 'Denmark', 'finland': 'Finland',
-        'india': 'India', 'china': 'China', 'japan': 'Japan', 'singapore': 'Singapore',
-        'australia': 'Australia', 'brazil': 'Brazil', 'mexico': 'Mexico',
-        'ireland': 'Ireland', 'poland': 'Poland', 'czech republic': 'Czech Republic'
+    # Country mapping with word boundary patterns
+    country_patterns = {
+        r'\busa\b|\bus\b|\bunited states\b|\bamerica\b': 'United States',
+        r'\buk\b|\bunited kingdom\b|\bbritain\b|\bengland\b': 'United Kingdom',
+        r'\bcanada\b': 'Canada',
+        r'\bgermany\b|\bdeutschland\b': 'Germany',
+        r'\bfrance\b': 'France',
+        r'\bspain\b': 'Spain',
+        r'\bitaly\b': 'Italy',
+        r'\bnetherlands\b|\bholland\b': 'Netherlands',
+        r'\bbelgium\b': 'Belgium',
+        r'\bswitzerland\b': 'Switzerland',
+        r'\baustria\b': 'Austria',
+        r'\bsweden\b': 'Sweden',
+        r'\bnorway\b': 'Norway',
+        r'\bdenmark\b': 'Denmark',
+        r'\bfinland\b': 'Finland',
+        r'\bindia\b': 'India',
+        r'\bchina\b': 'China',
+        r'\bjapan\b': 'Japan',
+        r'\bsingapore\b': 'Singapore',
+        r'\baustralia\b': 'Australia',
+        r'\bbrazil\b': 'Brazil',
+        r'\bmexico\b': 'Mexico',
+        r'\bireland\b': 'Ireland',
+        r'\bpoland\b': 'Poland',
+        r'\bczech republic\b': 'Czech Republic'
     }
     
-    # Check for direct country matches
-    for key, country in country_mapping.items():
-        if key in location_lower:
+    # Check for country patterns using word boundaries
+    import re
+    for pattern, country in country_patterns.items():
+        if re.search(pattern, location_lower):
             return country
     
-    # Check for state abbreviations (US)
+    # Check for US state abbreviations
     us_states = ['ca', 'ny', 'tx', 'fl', 'wa', 'il', 'pa', 'oh', 'ga', 'nc', 'mi', 'nj', 'va', 'tn', 'az', 'ma', 'in', 'mo', 'md', 'wi', 'co', 'mn', 'sc', 'al', 'la', 'ky', 'or', 'ok', 'ct', 'ut', 'ia', 'nv', 'ar', 'ms', 'ks', 'nm', 'ne', 'wv', 'id', 'hi', 'nh', 'me', 'mt', 'ri', 'de', 'sd', 'nd', 'ak', 'vt', 'wy']
     for state in us_states:
-        if f' {state}' in location_lower or location_lower.endswith(state):
+        pattern = rf'\b{state}\b'
+        if re.search(pattern, location_lower):
             return 'United States'
     
     return location  # Return original if no mapping found
+
+async def get_real_job_recommendations(
+    skills: List[str], 
+    experience: str, 
+    last_two_jobs: List[str], 
+    location: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """
+    Get real job recommendations from multiple job APIs
+    """
+    if not REAL_APIS_AVAILABLE:
+        return []
+    
+    try:
+        # Extract country for better API targeting
+        user_country = _extract_country_from_location(location) if location else ""
+        
+        # Create search queries based on user profile
+        search_queries = []
+        
+        # Generate queries from job titles
+        for job_title in last_two_jobs:
+            if job_title and len(job_title.strip()) > 2:
+                # Clean job title (remove certifications, contact info)
+                clean_title = job_title.replace('❖', '').strip()
+                # Remove phone numbers and emails
+                import re
+                clean_title = re.sub(r'\+?\d{1,3}[-.\s]?\d{3,4}[-.\s]?\d{3,4}[-.\s]?\d{3,4}', '', clean_title)
+                clean_title = re.sub(r'\S+@\S+', '', clean_title)
+                clean_title = clean_title.strip()
+                
+                if clean_title and len(clean_title) > 5:
+                    search_queries.append(clean_title)
+        
+        # Generate queries from skills (focus on main technologies)
+        tech_skills = []
+        for skill in skills[:5]:  # Top 5 skills
+            skill_clean = skill.strip()
+            if len(skill_clean) > 2 and not any(cert in skill_clean.lower() for cert in ['certified', 'certification']):
+                tech_skills.append(skill_clean)
+        
+        if tech_skills:
+            search_queries.append(' '.join(tech_skills[:3]))  # Combine top 3 skills
+        
+        # Fallback queries if no good job titles
+        if not search_queries:
+            if any('data' in skill.lower() for skill in skills):
+                search_queries.append('Data Engineer')
+            elif any('software' in skill.lower() or 'developer' in skill.lower() for skill in skills):
+                search_queries.append('Software Engineer')
+            else:
+                search_queries.append('Software Developer')
+        
+        print(f"🔍 Searching real job APIs with queries: {search_queries}")
+        print(f"   Location: {location}")
+        print(f"   Country: {user_country}")
+        
+        # Search all APIs with different queries
+        aggregator = JobAggregator()
+        all_jobs = []
+        
+        for query in search_queries[:3]:  # Limit to 3 queries to avoid rate limits
+            try:
+                jobs = await aggregator.search_all_apis(
+                    query=query,
+                    location=location or "",
+                    country=user_country
+                )
+                all_jobs.extend(jobs)
+                
+                # Add small delay between queries
+                await asyncio.sleep(0.5)
+                
+            except Exception as e:
+                print(f"❌ Error searching with query '{query}': {e}")
+                continue
+        
+        # Remove duplicates and validate jobs
+        unique_jobs = []
+        seen_jobs = set()
+        
+        for job in all_jobs:
+            # Create unique key
+            job_key = (job.get('title', '').lower(), job.get('company', '').lower())
+            
+            if job_key not in seen_jobs and validate_job_posting(job):
+                seen_jobs.add(job_key)
+                unique_jobs.append(job)
+        
+        # Sort by match score and limit results
+        unique_jobs.sort(key=lambda x: x.get('match_score', 0), reverse=True)
+        
+        print(f"✅ Found {len(unique_jobs)} real job recommendations from APIs")
+        
+        return unique_jobs[:20]  # Return top 20 jobs
+        
+    except Exception as e:
+        print(f"❌ Error getting real job recommendations: {e}")
+        return []
 
 def _get_mock_job_recommendations(skills: List[str], experience: str, last_two_jobs: List[str], location: Optional[str] = None) -> List[Dict[str, Any]]:
     """
@@ -53,7 +179,7 @@ def _get_mock_job_recommendations(skills: List[str], experience: str, last_two_j
     Enhanced to better match recent job titles and location.
     """
     
-    print(f"🔍 Generating job recommendations for:")
+    print(f"🔍 Generating MOCK job recommendations for:")
     print(f"   Skills: {skills}")
     print(f"   Experience: {experience}")
     print(f"   Last jobs: {last_two_jobs}")
@@ -199,15 +325,17 @@ def _get_mock_job_recommendations(skills: List[str], experience: str, last_two_j
         template_level = template.get("experience_level", "Mid-level")
         if user_level == template_level:
             experience_match_score = 0.2
-        elif (user_level == "Senior" and template_level in ["Mid-Senior", "Lead", "Principal"]) or \
-             (user_level == "Leadership" and template_level in ["Senior", "Principal", "Staff"]):
+        elif (user_level == "Senior" and template_level in ["Lead", "Principal"]) or \
+             (user_level == "Leadership" and template_level in ["Senior", "Lead", "Principal"]):
             experience_match_score = 0.1
         
-        # Combined matching score
-        total_match_score = (skill_match_score * 0.4 + 
-                           title_match_score * 0.4 + 
-                           location_match_score * 0.1 + 
-                           experience_match_score * 0.1)
+        # Calculate total match score
+        total_match_score = (
+            skill_match_score * 0.4 +           # 40% weight on skills
+            title_match_score * 0.3 +           # 30% weight on job title
+            location_match_score * 0.2 +        # 20% weight on location
+            experience_match_score * 0.1         # 10% weight on experience level
+        )
         
         # Include jobs with reasonable match scores or strong title matches
         if total_match_score > 0.25 or title_match_score > 0.6:
@@ -216,7 +344,7 @@ def _get_mock_job_recommendations(skills: List[str], experience: str, last_two_j
             country = location_parts[-1] if len(location_parts) > 1 else "USA"
             
             job = {
-                "id": f"job_{len(matched_jobs) + 1}",
+                "id": f"mock_job_{len(matched_jobs) + 1}",
                 "title": template["title"],
                 "company": template["company"],
                 "location": template["location"],
@@ -231,28 +359,29 @@ def _get_mock_job_recommendations(skills: List[str], experience: str, last_two_j
                 "skill_matches": skill_matches,
                 "title_match": round(title_match_score * 100),
                 "location_match": round(location_match_score * 100),
-                "source": "CareerCompass AI",
+                "source": "CareerCompass AI (Demo)",
                 "postedDate": (datetime.now() - timedelta(days=random.randint(1, 30))).strftime("%Y-%m-%d"),
                 "daysAgo": random.randint(1, 30),
                 "applyUrl": f"https://www.linkedin.com/jobs/search/?keywords={template['title'].replace(' ', '%20')}&location={template['location'].replace(' ', '%20').replace(',', '%2C')}",
-                "company_logo": f"https://logo.clearbit.com/{template['company'].lower().replace(' ', '').replace(',', '')}.com"
+                "company_logo": f"https://logo.clearbit.com/{template['company'].lower().replace(' ', '').replace(',', '')}.com",
+                "is_real_job": False  # Mark as mock data
             }
             matched_jobs.append(job)
     
     # Sort by total match score, then by title match, then by skill match
     matched_jobs.sort(key=lambda x: (x["match_score"], x["title_match"], x["skill_matches"]), reverse=True)
     
-    # Add location-specific jobs if location is provided
-    if location and len(matched_jobs) < 15:
-        location_specific_jobs = _generate_location_specific_jobs(location, skills, last_two_jobs, len(matched_jobs))
-        matched_jobs.extend(location_specific_jobs)
+    # Add location-specific jobs if user provided location
+    if location and len(matched_jobs) < 10:
+        location_jobs = _generate_location_specific_jobs(location, skills, last_two_jobs, len(matched_jobs))
+        matched_jobs.extend(location_jobs)
     
-    # Add some additional variety if we still don't have enough matches
+    # Add additional variety if still not enough jobs
     if len(matched_jobs) < 15:
         additional_jobs = _generate_additional_jobs(skills, last_two_jobs, user_level, len(matched_jobs))
         matched_jobs.extend(additional_jobs)
     
-    return matched_jobs[:25]  # Return top 25 matches
+    return matched_jobs[:15]  # Return top 15 matches
 
 def _generate_location_specific_jobs(location: str, skills: List[str], last_jobs: List[str], start_id: int) -> List[Dict[str, Any]]:
     """Generate jobs specific to the user's location"""
@@ -278,7 +407,7 @@ def _generate_location_specific_jobs(location: str, skills: List[str], last_jobs
         country = location_parts[-1] if len(location_parts) > 1 else "USA"
         
         job = {
-            "id": f"job_{start_id + i + 1}",
+            "id": f"mock_location_job_{start_id + i + 1}",
             "title": title,
             "company": f"Local Tech Solutions {i+1}",
             "location": location,
@@ -293,49 +422,34 @@ def _generate_location_specific_jobs(location: str, skills: List[str], last_jobs
             "skill_matches": min(len(skills), 4),
             "title_match": 80 if any(job_word in title.lower() for job in last_jobs for job_word in job.lower().split()) else 60,
             "location_match": 100,  # Perfect location match
-            "source": "CareerCompass AI",
+            "source": "CareerCompass AI (Demo)",
             "postedDate": (datetime.now() - timedelta(days=random.randint(1, 15))).strftime("%Y-%m-%d"),
             "daysAgo": random.randint(1, 15),
             "applyUrl": f"https://www.indeed.com/jobs?q={title.replace(' ', '+')}&l={location.replace(' ', '+').replace(',', '%2C')}",
-            "company_logo": f"https://via.placeholder.com/100x100?text=Local{i+1}"
+            "company_logo": f"https://via.placeholder.com/100x100?text=Local{i+1}",
+            "is_real_job": False
         }
         location_jobs.append(job)
     
     return location_jobs
 
 def _generate_additional_jobs(skills: List[str], last_jobs: List[str], user_level: str, start_id: int) -> List[Dict[str, Any]]:
-    """Generate additional jobs to fill the recommendations"""
+    """Generate additional job variety to reach target count"""
     additional_jobs = []
     
-    # Determine salary range based on user level
-    if user_level == "Senior":
-        salary_ranges = ["$110,000 - $150,000", "$120,000 - $160,000", "$100,000 - $140,000"]
-    elif user_level == "Leadership":
-        salary_ranges = ["$130,000 - $180,000", "$140,000 - $190,000", "$125,000 - $170,000"]
-    else:
-        salary_ranges = ["$80,000 - $120,000", "$90,000 - $130,000", "$85,000 - $125,000"]
+    # Job title variations based on skills and experience
+    job_variations = [
+        "Software Developer", "Full Stack Developer", "Backend Engineer", 
+        "Frontend Engineer", "DevOps Engineer", "Cloud Engineer",
+        "Data Analyst", "Machine Learning Engineer", "Product Manager",
+        "Technical Lead", "Engineering Manager", "Solutions Engineer"
+    ]
     
-    # Generate jobs based on user's background
-    job_variations = []
-    for job in last_jobs:
-        if "data" in job.lower():
-            job_variations.extend([
-                "Data Engineer", "Senior Data Analyst", "Data Platform Engineer",
-                "Analytics Engineer", "Data Infrastructure Engineer"
-            ])
-        elif "software" in job.lower() or "engineer" in job.lower():
-            job_variations.extend([
-                "Software Engineer", "Backend Engineer", "Full Stack Developer",
-                "Platform Engineer", "Systems Engineer"
-            ])
-        elif "architect" in job.lower():
-            job_variations.extend([
-                "Solutions Architect", "Technical Architect", "Cloud Architect",
-                "Enterprise Architect", "System Architect"
-            ])
-    
-    if not job_variations:
-        job_variations = ["Software Engineer", "Data Engineer", "DevOps Engineer", "Product Engineer"]
+    # Salary ranges based on user level
+    salary_ranges = [
+        "$80,000 - $120,000", "$90,000 - $130,000", "$100,000 - $140,000",
+        "$110,000 - $150,000", "$120,000 - $160,000", "$130,000 - $170,000"
+    ]
     
     for i in range(min(10, 15 - start_id)):
         title = job_variations[i % len(job_variations)]
@@ -343,7 +457,7 @@ def _generate_additional_jobs(skills: List[str], last_jobs: List[str], user_leve
         country = "Global" if i % 3 == 0 else "USA"
         
         job = {
-            "id": f"job_{start_id + i + 1}",
+            "id": f"mock_additional_job_{start_id + i + 1}",
             "title": title,
             "company": f"TechCompany {i+1}",
             "location": location,
@@ -358,11 +472,12 @@ def _generate_additional_jobs(skills: List[str], last_jobs: List[str], user_leve
             "skill_matches": min(len(skills), 3),
             "title_match": 70 if any(job_word in title.lower() for job in last_jobs for job_word in job.lower().split()) else 50,
             "location_match": 20,
-            "source": "CareerCompass AI",
+            "source": "CareerCompass AI (Demo)",
             "postedDate": (datetime.now() - timedelta(days=random.randint(1, 20))).strftime("%Y-%m-%d"),
             "daysAgo": random.randint(1, 20),
             "applyUrl": f"https://www.glassdoor.com/Job/jobs.htm?suggestCount=0&suggestChosen=false&clickSource=searchBtn&typedKeyword={title.replace(' ', '+')}&sc.keyword={title.replace(' ', '+')}&locT=&locId=",
-            "company_logo": f"https://via.placeholder.com/100x100?text=Company{i+1}"
+            "company_logo": f"https://via.placeholder.com/100x100?text=Company{i+1}",
+            "is_real_job": False
         }
         additional_jobs.append(job)
     
@@ -387,14 +502,6 @@ async def get_personalized_job_recommendations(
         List of job recommendations with detailed information
     """
     try:
-        # For now, return mock data
-        # In production, this would integrate with real job APIs like:
-        # - LinkedIn Jobs API
-        # - Indeed API
-        # - Glassdoor API
-        # - RemoteOK API
-        # - AngelList API
-        
         print(f"🔍 Generating job recommendations for:")
         print(f"   Skills: {skills}")
         print(f"   Experience: {experience}")
@@ -405,15 +512,27 @@ async def get_personalized_job_recommendations(
         user_country = _extract_country_from_location(location) if location else None
         print(f"   Detected Country: {user_country}")
         
-        # Simulate API call delay
-        await asyncio.sleep(0.5)
+        # Try to get real job recommendations first
+        real_jobs = []
+        if REAL_APIS_AVAILABLE and os.getenv('USE_REAL_JOBS', 'false').lower() == 'true':
+            print("🌐 Attempting to fetch real job recommendations...")
+            real_jobs = await get_real_job_recommendations(skills, experience, last_two_jobs, location)
         
-        # Generate personalized recommendations
-        recommendations = _get_mock_job_recommendations(skills, experience, last_two_jobs, location)
-        
-        print(f"✅ Generated {len(recommendations)} job recommendations")
-        
-        return recommendations
+        # If we have real jobs, use them; otherwise fall back to mock data
+        if real_jobs:
+            print(f"✅ Using {len(real_jobs)} real job recommendations")
+            return real_jobs
+        else:
+            print("⚠️  No real jobs found, using mock data for demonstration")
+            # Simulate API call delay for realistic experience
+            await asyncio.sleep(0.5)
+            
+            # Generate mock recommendations
+            recommendations = _get_mock_job_recommendations(skills, experience, last_two_jobs, location)
+            
+            print(f"✅ Generated {len(recommendations)} mock job recommendations")
+            
+            return recommendations
         
     except Exception as e:
         print(f"❌ Error in job recommendations: {e}")
@@ -433,15 +552,14 @@ async def get_personalized_job_recommendations(
                 "remote": True,
                 "match_score": 75,
                 "skill_matches": min(len(skills), 3),
-                "source": "CareerCompass AI",
+                "source": "CareerCompass AI (Fallback)",
                 "postedDate": datetime.now().strftime("%Y-%m-%d"),
                 "daysAgo": 5,
                 "applyUrl": "https://www.linkedin.com/jobs/search/?keywords=Software%20Developer",
-                "company_logo": "https://via.placeholder.com/100x100?text=Company"
+                "company_logo": "https://via.placeholder.com/100x100?text=Company",
+                "is_real_job": False
             }
         ]
-
-# Additional utility functions for job services
 
 def filter_jobs_by_location(jobs: List[Dict[str, Any]], location: str) -> List[Dict[str, Any]]:
     """Filter jobs by location preference"""
@@ -449,16 +567,20 @@ def filter_jobs_by_location(jobs: List[Dict[str, Any]], location: str) -> List[D
         return jobs
     
     location_lower = location.lower()
-    filtered = []
+    filtered_jobs = []
     
     for job in jobs:
         job_location = job.get("location", "").lower()
+        job_country = job.get("country", "").lower()
+        
+        # Check if job matches location
         if (location_lower in job_location or 
-            job_location in location_lower or 
-            job.get("remote", False)):
-            filtered.append(job)
+            location_lower in job_country or
+            job.get("remote", False) or
+            "remote" in job_location):
+            filtered_jobs.append(job)
     
-    return filtered
+    return filtered_jobs
 
 def calculate_salary_match(jobs: List[Dict[str, Any]], target_salary: Optional[int] = None) -> List[Dict[str, Any]]:
     """Add salary match scores to jobs"""

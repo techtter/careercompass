@@ -21,6 +21,8 @@ interface JobRecommendation {
     source: string;
     postedDate?: string;
     daysAgo?: number;
+    is_real_job?: boolean;
+    match_score?: number;
 }
 
 export default function JobsPage() {
@@ -310,30 +312,50 @@ export default function JobsPage() {
                                                 
                                                 <p className="text-gray-600 mb-4 leading-relaxed">{job.description}</p>
                                                 
-                                                <div className="flex items-center justify-between">
-                                                    <div className="flex items-center space-x-3">
-                                                        <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
-                                                            {job.source}
-                                                        </span>
-                                                        {job.daysAgo !== undefined && (
-                                                            <span className={`text-xs px-2 py-1 rounded font-medium ${
-                                                                job.daysAgo <= 3 ? 'bg-green-100 text-green-700' :
-                                                                job.daysAgo <= 7 ? 'bg-blue-100 text-blue-700' :
-                                                                job.daysAgo <= 14 ? 'bg-yellow-100 text-yellow-700' :
-                                                                'bg-gray-100 text-gray-600'
-                                                            }`}>
-                                                                {job.daysAgo === 0 ? 'Posted Today' : 
-                                                                 job.daysAgo === 1 ? 'Posted 1 day ago' : 
-                                                                 `Posted ${job.daysAgo} days ago`}
-                                                            </span>
-                                                        )}
-                                                        {job.postedDate && (
-                                                            <span className="text-xs text-gray-500">
-                                                                {new Date(job.postedDate).toLocaleDateString()}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                </div>
+                                                                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center space-x-3">
+                                        <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
+                                            {job.source}
+                                        </span>
+                                        {/* Real Job Indicator */}
+                                        {job.is_real_job !== undefined && (
+                                            <span className={`text-xs px-2 py-1 rounded font-medium ${
+                                                job.is_real_job 
+                                                    ? 'bg-green-100 text-green-700 border border-green-200' 
+                                                    : 'bg-amber-100 text-amber-700 border border-amber-200'
+                                            }`}>
+                                                {job.is_real_job ? '🌐 Live Job' : '🎭 Demo Data'}
+                                            </span>
+                                        )}
+                                        {/* Match Score */}
+                                        {job.match_score !== undefined && (
+                                            <span className={`text-xs px-2 py-1 rounded font-medium ${
+                                                job.match_score >= 80 ? 'bg-green-100 text-green-700' :
+                                                job.match_score >= 60 ? 'bg-blue-100 text-blue-700' :
+                                                'bg-gray-100 text-gray-600'
+                                            }`}>
+                                                ⭐ {job.match_score}% Match
+                                            </span>
+                                        )}
+                                        {job.daysAgo !== undefined && (
+                                            <span className={`text-xs px-2 py-1 rounded font-medium ${
+                                                job.daysAgo <= 3 ? 'bg-green-100 text-green-700' :
+                                                job.daysAgo <= 7 ? 'bg-blue-100 text-blue-700' :
+                                                job.daysAgo <= 14 ? 'bg-yellow-100 text-yellow-700' :
+                                                'bg-gray-100 text-gray-600'
+                                            }`}>
+                                                {job.daysAgo === 0 ? 'Posted Today' : 
+                                                 job.daysAgo === 1 ? 'Posted 1 day ago' : 
+                                                 `Posted ${job.daysAgo} days ago`}
+                                            </span>
+                                        )}
+                                        {job.postedDate && (
+                                            <span className="text-xs text-gray-500">
+                                                {new Date(job.postedDate).toLocaleDateString()}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
                                             </div>
                                             
                                             <div className="ml-6">

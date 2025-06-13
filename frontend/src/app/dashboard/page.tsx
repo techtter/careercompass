@@ -47,6 +47,8 @@ interface JobRecommendation {
     source: string;
     postedDate?: string;
     daysAgo?: number;
+    is_real_job?: boolean;
+    match_score?: number;
 }
 
 export default function Dashboard() {
