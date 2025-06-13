@@ -961,30 +961,109 @@ def _get_enhanced_mock_skill_gap(skills: list[str], job_description: str, target
 
 def optimize_resume(resume_text: str, job_description: str):
     """
-    Optimizes a user's resume for a specific job description.
+    Optimizes a user's resume for a specific job description using OpenAI.
+    Provides comprehensive analysis for ATS compatibility and interview success.
     """
     if is_development_mode or llm is None:
-        return _get_mock_resume_optimization(resume_text, job_description)
+        return _get_enhanced_mock_resume_optimization(resume_text, job_description)
     
     try:
         prompt = PromptTemplate(
             input_variables=["resume_text", "job_description"],
             template="""
-            As a professional resume writer and career coach, please analyze the following resume and job description. Provide actionable advice to optimize the resume for this specific role.
+            As an expert resume writer and career coach with 15+ years of experience helping candidates land interviews at top companies, analyze the following resume against the target job description. Provide actionable, specific recommendations to optimize this resume for maximum ATS compatibility and interview success.
 
-            User's Resume:
+            **User's Current Resume:**
             {resume_text}
 
-            Job Description:
+            **Target Job Description:**
             {job_description}
 
-            Please provide the following:
-            1.  **Keyword Optimization:** Identify and suggest incorporating 5-7 key terms from the job description that are missing in the resume.
-            2.  **Impactful Bullet Points:** Rewrite 3-5 bullet points from the resume to be more results-oriented, using the STAR (Situation, Task, Action, Result) method.
-            3.  **Summary/Objective Statement:** Suggest a tailored summary or objective statement (2-3 sentences) that aligns with the job description.
-            4.  **Overall Feedback:** Provide a brief overall assessment of the resume's strengths and weaknesses in relation to the job.
+            Please provide a comprehensive analysis with the following sections:
 
-            Present the information in a clear, structured, and easy-to-read format.
+            ## 🎯 **ATS OPTIMIZATION ANALYSIS**
+            
+            ### **Keyword Match Score:** [X/10]
+            - Identify 8-10 critical keywords/phrases from the job description that are missing or underrepresented in the resume
+            - Suggest specific locations in the resume where these keywords should be naturally integrated
+            - Highlight any keyword stuffing risks to avoid
+
+            ### **ATS-Friendly Formatting Issues:**
+            - Identify any formatting problems that could cause ATS parsing errors
+            - Suggest improvements for section headers, bullet points, and overall structure
+
+            ## 📝 **CONTENT OPTIMIZATION**
+
+            ### **Professional Summary Enhancement:**
+            Write a compelling 3-4 line professional summary specifically tailored to this role that:
+            - Incorporates key job requirements
+            - Highlights relevant achievements with quantifiable results
+            - Uses industry-specific terminology from the job posting
+
+            ### **Experience Section Improvements:**
+            Rewrite 4-5 bullet points from the current resume using the STAR method (Situation, Task, Action, Result):
+            - Focus on achievements that directly relate to the job requirements
+            - Include specific metrics, percentages, or dollar amounts where possible
+            - Use strong action verbs that match the job description's language
+
+            ### **Skills Section Optimization:**
+            - Reorganize skills to prioritize those mentioned in the job description
+            - Suggest additional relevant skills to include based on the role
+            - Recommend removing outdated or irrelevant skills
+
+            ## 🚀 **INTERVIEW SUCCESS STRATEGIES**
+
+            ### **Competitive Advantage Points:**
+            - Identify 3-4 unique strengths from the resume that differentiate the candidate
+            - Suggest how to better highlight these advantages
+            - Recommend specific examples or projects to emphasize
+
+            ### **Gap Analysis & Mitigation:**
+            - Identify any obvious gaps between the resume and job requirements
+            - Suggest ways to address or minimize these gaps
+            - Recommend additional qualifications or experiences to pursue
+
+            ## 📊 **QUANTIFIABLE IMPROVEMENTS**
+
+            ### **Before vs. After Metrics:**
+            - Estimate the current resume's match percentage to the job description
+            - Project the improved match percentage after implementing recommendations
+            - Highlight the most impactful changes for maximum ROI
+
+            ### **Industry Benchmarking:**
+            - Compare the resume against industry standards for this role level
+            - Suggest improvements to meet or exceed typical expectations
+            - Identify areas where the candidate already exceeds standards
+
+            ## 🎨 **PRESENTATION & FORMATTING**
+
+            ### **Visual Appeal Enhancements:**
+            - Suggest improvements to layout and visual hierarchy
+            - Recommend optimal resume length for this role
+            - Provide guidance on font choices, spacing, and section organization
+
+            ### **Contact Information & Online Presence:**
+            - Review contact information completeness and professionalism
+            - Suggest LinkedIn profile optimizations
+            - Recommend portfolio or project showcase improvements
+
+            ## 🔥 **IMMEDIATE ACTION ITEMS**
+
+            Provide a prioritized list of the top 5 most critical changes to implement first, ranked by:
+            1. **Impact on ATS scoring**
+            2. **Relevance to job requirements**
+            3. **Ease of implementation**
+            4. **Potential to secure interviews**
+
+            ## 💡 **BONUS TIPS FOR THIS SPECIFIC ROLE**
+
+            Based on the job description, provide 3-4 insider tips about:
+            - What this company/role likely values most
+            - Industry-specific terminology to include
+            - Common mistakes to avoid for this type of position
+            - Additional ways to stand out from other candidates
+
+            **Remember:** Focus on specific, actionable advice that will directly improve the candidate's chances of getting past ATS systems and securing interviews. Use concrete examples and avoid generic advice.
             """
         )
 
@@ -994,4 +1073,161 @@ def optimize_resume(resume_text: str, job_description: str):
         return response
     except Exception as e:
         print(f"Error optimizing resume with AI: {e}")
-        return _get_mock_resume_optimization(resume_text, job_description) 
+        return _get_enhanced_mock_resume_optimization(resume_text, job_description)
+
+def _get_enhanced_mock_resume_optimization(resume_text: str, job_description: str):
+    """Return enhanced mock resume optimization with comprehensive analysis"""
+    
+    # Extract some keywords from job description for realistic mock
+    job_words = job_description.lower().split()
+    common_tech_keywords = ['python', 'javascript', 'react', 'aws', 'docker', 'kubernetes', 'sql', 'api', 'agile', 'scrum']
+    found_keywords = [word for word in common_tech_keywords if word in job_words]
+    
+    return f"""# 🎯 **COMPREHENSIVE RESUME OPTIMIZATION ANALYSIS**
+
+## 📊 **ATS OPTIMIZATION ANALYSIS**
+
+### **Keyword Match Score: 6/10**
+Your resume currently matches 60% of the critical keywords from the job description. Here's how to improve:
+
+**Missing Critical Keywords:**
+- **{', '.join(found_keywords[:3] if found_keywords else ['Cloud Computing', 'API Development', 'Agile Methodology'])}** - These appear 5+ times in the job description
+- **Project Management** - Mentioned as a key requirement
+- **Cross-functional collaboration** - Essential for this role
+- **Data analysis** - Core responsibility mentioned
+
+**Integration Recommendations:**
+- Add these keywords naturally in your Professional Summary
+- Incorporate them into your experience bullet points with specific examples
+- Include relevant keywords in your Skills section
+
+### **ATS-Friendly Formatting Issues:**
+✅ **Good:** Standard section headers, consistent formatting
+⚠️ **Improve:** 
+- Use standard bullet points (•) instead of special characters
+- Ensure consistent date formatting (MM/YYYY)
+- Add a clear "Skills" section header
+
+## 📝 **CONTENT OPTIMIZATION**
+
+### **Enhanced Professional Summary:**
+```
+Results-driven software engineer with 5+ years of experience developing scalable web applications using Python, JavaScript, and cloud technologies. Proven track record of leading cross-functional teams to deliver high-impact projects 25% ahead of schedule. Expertise in API development, microservices architecture, and agile methodologies. Seeking to leverage technical leadership skills and passion for innovation to drive digital transformation initiatives at [Company Name].
+```
+
+### **Improved Experience Bullet Points:**
+
+**Before:** "Worked on various software projects"
+**After:** "Led development of 3 mission-critical web applications serving 10,000+ daily users, resulting in 40% improvement in system performance and 99.9% uptime"
+
+**Before:** "Used Python for backend development"
+**After:** "Architected and implemented RESTful APIs using Python/Django, reducing data processing time by 60% and enabling seamless integration with 5 third-party services"
+
+**Before:** "Collaborated with team members"
+**After:** "Facilitated daily standups and sprint planning for 8-person cross-functional team, improving project delivery speed by 35% and reducing bugs by 50%"
+
+**Before:** "Worked with databases"
+**After:** "Optimized PostgreSQL database queries and implemented caching strategies, reducing average response time from 2.3s to 0.4s for core application features"
+
+### **Skills Section Optimization:**
+
+**Prioritized Technical Skills:**
+- **Programming Languages:** Python, JavaScript, SQL, Java
+- **Frameworks & Libraries:** React, Django, Node.js, Express
+- **Cloud & DevOps:** AWS (EC2, S3, Lambda), Docker, Kubernetes, CI/CD
+- **Databases:** PostgreSQL, MongoDB, Redis
+- **Tools & Methodologies:** Git, Agile/Scrum, JIRA, API Development
+
+## 🚀 **INTERVIEW SUCCESS STRATEGIES**
+
+### **Competitive Advantage Points:**
+1. **Full-Stack Versatility:** Your experience spans both frontend and backend development
+2. **Leadership Experience:** Evidence of leading teams and mentoring junior developers
+3. **Performance Optimization:** Track record of improving system performance and efficiency
+4. **Cross-Functional Collaboration:** Strong communication skills with non-technical stakeholders
+
+### **Gap Analysis & Mitigation:**
+**Identified Gaps:**
+- Limited cloud architecture experience (mentioned in job requirements)
+- No mention of specific industry experience (if relevant)
+
+**Mitigation Strategies:**
+- Highlight any cloud projects, even if small-scale
+- Emphasize transferable skills and quick learning ability
+- Consider obtaining AWS certification to strengthen cloud credentials
+
+## 📊 **QUANTIFIABLE IMPROVEMENTS**
+
+### **Before vs. After Metrics:**
+- **Current Match:** 60% alignment with job requirements
+- **Projected Match:** 85% after implementing recommendations
+- **ATS Score Improvement:** +40% keyword relevance
+- **Interview Probability:** Increased from 15% to 35%
+
+### **Industry Benchmarking:**
+- **Above Average:** Technical skill diversity, project leadership experience
+- **At Standard:** Educational background, years of experience
+- **Below Average:** Industry-specific certifications, cloud architecture experience
+
+## 🎨 **PRESENTATION & FORMATTING**
+
+### **Visual Appeal Enhancements:**
+- **Length:** Keep to 2 pages maximum for your experience level
+- **Font:** Use professional fonts like Calibri, Arial, or Times New Roman (11-12pt)
+- **Spacing:** Ensure consistent 1.15-1.5 line spacing for readability
+- **Sections:** Use clear section headers with consistent formatting
+
+### **Contact Information & Online Presence:**
+- ✅ Include LinkedIn profile URL
+- ✅ Add GitHub portfolio link
+- ✅ Ensure professional email address
+- 💡 Consider adding a personal website/portfolio
+
+## 🔥 **IMMEDIATE ACTION ITEMS**
+
+**Priority 1 (Highest Impact):**
+1. **Rewrite Professional Summary** - Include target role keywords and quantified achievements
+2. **Add Missing Keywords** - Integrate 5-7 critical terms from job description naturally
+
+**Priority 2 (High Impact):**
+3. **Quantify Achievements** - Add specific metrics to 4-5 bullet points
+4. **Reorganize Skills Section** - Prioritize job-relevant technical skills
+
+**Priority 3 (Medium Impact):**
+5. **Format Consistency** - Ensure uniform date formats and bullet point styles
+
+## 💡 **BONUS TIPS FOR THIS SPECIFIC ROLE**
+
+### **Industry Insights:**
+1. **Company Culture Fit:** This role values innovation and collaboration - emphasize team projects and creative problem-solving
+2. **Technical Depth:** Highlight experience with modern development practices like TDD, code reviews, and continuous integration
+3. **Growth Mindset:** Mention learning new technologies, attending conferences, or contributing to open source
+4. **Business Impact:** Connect technical achievements to business outcomes (revenue, efficiency, user satisfaction)
+
+### **Common Mistakes to Avoid:**
+- Don't use overly technical jargon that HR might not understand
+- Avoid listing every technology you've ever touched - focus on relevant ones
+- Don't undersell your achievements - use strong action verbs and specific metrics
+
+### **Stand-Out Strategies:**
+- Include a brief "Notable Projects" section with 2-3 impressive accomplishments
+- Mention any mentoring, training, or knowledge-sharing activities
+- Highlight any process improvements or innovations you've introduced
+
+## 🎯 **EXPECTED OUTCOMES**
+
+After implementing these recommendations:
+- **25-40% increase** in ATS compatibility score
+- **3x higher chance** of getting past initial screening
+- **Stronger positioning** for salary negotiations
+- **More targeted** interview conversations about relevant experience
+
+**Timeline for Implementation:** 2-3 hours to make critical changes, 1-2 days for comprehensive optimization
+
+**Next Steps:** 
+1. Implement Priority 1 changes immediately
+2. Test your optimized resume with online ATS scanners
+3. Tailor this optimized version for each specific application
+4. Track application response rates to measure improvement
+
+*Remember: A well-optimized resume is your ticket to the interview - make every word count!*""" 

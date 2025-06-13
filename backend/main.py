@@ -82,21 +82,21 @@ class WebhookEvent(BaseModel):
 
 class CareerPathRequest(BaseModel):
     user_id: str
-    cv_record_id: Optional[int] = None
+    cv_record_id: Optional[str] = None
     job_title: str
     experience: str
     skills: List[str]
 
 class SkillGapRequest(BaseModel):
     user_id: str
-    cv_record_id: Optional[int] = None
+    cv_record_id: Optional[str] = None
     skills: List[str]
     job_description: str
     target_role: Optional[str] = None
 
 class ResumeOptimizationRequest(BaseModel):
     user_id: str
-    cv_record_id: Optional[int] = None
+    cv_record_id: Optional[str] = None
     resume_text: str
     job_description: str
 
@@ -347,6 +347,8 @@ async def get_user_profile_with_jobs(user_id: str):
             "user_exists": True,
             "user_profile": user_profile,
             "cv_record_id": cv_record.get("id"),
+            "cv_raw_text": cv_record.get("raw_text", ""),
+            "cv_filename": cv_record.get("filename", "CV"),
             "job_recommendations": job_recommendations,
             "last_updated": cv_record.get("updated_at"),
             "message": f"Welcome back, {full_name or 'User'}! Here are your latest job recommendations."
@@ -387,23 +389,32 @@ async def update_user_cv(user_id: str, file: UploadFile = File(...)):
         except Exception:
             pass  # Continue without base64 encoding if it fails
         
+        # Ensure parsed_data is a dictionary
+        if isinstance(parsed_data, str):
+            try:
+                parsed_data = json.loads(parsed_data)
+            except:
+                parsed_data = {}
+        
         update_data = {
             "filename": file.filename,
             "file_content": file_content_b64,
             "file_type": file.content_type,
             "raw_text": resume_text,
-            "name": parsed_data.get("name"),
+            "firstName": parsed_data.get("firstName"),
+            "lastName": parsed_data.get("lastName"),
             "email": parsed_data.get("email"),
             "phone": parsed_data.get("phone"),
-            "location": parsed_data.get("location"),
-            "experience": parsed_data.get("experience"),
+            "experienceYears": parsed_data.get("experienceYears"),
             "skills": json.dumps(parsed_data.get("skills", [])),
-            "education": parsed_data.get("education"),
-            "last_two_jobs": json.dumps(parsed_data.get("lastTwoJobs", [])),
-            "summary": parsed_data.get("summary")
+            "lastThreeJobTitles": json.dumps(parsed_data.get("lastThreeJobTitles", [])),
+            "experienceSummary": parsed_data.get("experienceSummary"),
+            "companies": json.dumps(parsed_data.get("companies", [])),
+            "education": json.dumps(parsed_data.get("education", [])),
+            "certifications": json.dumps(parsed_data.get("certifications", []))
         }
         
-        updated_cv = CVRecordService.update_cv_record(existing_cv["id"], update_data)
+        updated_cv = CVRecordService.update_cv_record(user_id, update_data)
         
         if not updated_cv:
             raise HTTPException(status_code=500, detail="Failed to update CV")
@@ -483,12 +494,12 @@ async def get_skill_gap_analysis(request: SkillGapRequest):
         
         # Save skill gap analysis to database
         if request.cv_record_id:
-            SkillGapService.create_skill_gap(
-                cv_record_id=request.cv_record_id,
-                user_id=request.user_id,
-                job_description=request.job_description,
-                analysis_data=analysis
-            )
+            SkillGapService.create_skill_gap({
+                "cv_record_id": request.cv_record_id,
+                "user_id": request.user_id,
+                "job_description": request.job_description,
+                "analysis_data": analysis
+            })
         
         return {"analysis": analysis}
     except Exception as e:
@@ -512,12 +523,12 @@ async def get_resume_optimization(request: ResumeOptimizationRequest):
         
         # Save resume optimization to database
         if request.cv_record_id:
-            ResumeOptimizationService.create_resume_optimization(
-                cv_record_id=request.cv_record_id,
-                user_id=request.user_id,
-                job_description=request.job_description,
-                optimization_data=optimization
-            )
+            ResumeOptimizationService.create_resume_optimization({
+                "cv_record_id": request.cv_record_id,
+                "user_id": request.user_id,
+                "job_description": request.job_description,
+                "optimization_data": optimization
+            })
         
         return {"optimization": optimization}
     except Exception as e:

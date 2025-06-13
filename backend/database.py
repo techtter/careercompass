@@ -79,6 +79,26 @@ class CVRecordService:
             return MEMORY_STORE["cv_records"].get(user_id)
     
     @staticmethod
+    def get_cv_record_by_id(record_id: str) -> Optional[Dict[str, Any]]:
+        if database_available:
+            try:
+                result = supabase.table("cv_records").select("*").eq("id", record_id).execute()
+                return result.data[0] if result.data else None
+            except Exception as e:
+                print(f"Database error, falling back to memory: {e}")
+                # Search in memory store by ID
+                for user_id, record in MEMORY_STORE["cv_records"].items():
+                    if record.get("id") == record_id:
+                        return record
+                return None
+        else:
+            # Search in memory store by ID
+            for user_id, record in MEMORY_STORE["cv_records"].items():
+                if record.get("id") == record_id:
+                    return record
+            return None
+    
+    @staticmethod
     def update_cv_record(user_id: str, update_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         if database_available:
             try:
