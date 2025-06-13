@@ -23,10 +23,12 @@ export default function RootLayout({
       signUpUrl="/signup"
     >
       <html lang="en" suppressHydrationWarning>
-        <body className="font-sans antialiased">
+        <body className="font-sans antialiased" suppressHydrationWarning>
           <ThemeProvider>
-            <ThemeToggle />
-            {children}
+            <div className="relative min-h-screen bg-white dark:bg-gray-900 text-gray-900 dark:text-white transition-colors duration-300">
+              <ThemeToggle />
+              {children}
+            </div>
           </ThemeProvider>
         </body>
       </html>

@@ -11,6 +11,7 @@ export function ThemeToggle() {
       onClick={toggleTheme}
       className="fixed top-4 right-4 z-50 p-3 rounded-full bg-white dark:bg-gray-800 shadow-lg border border-gray-200 dark:border-gray-700 hover:shadow-xl transition-all duration-300 hover:scale-105"
       aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
+      suppressHydrationWarning
     >
       {theme === 'light' ? (
         // Moon icon for dark mode

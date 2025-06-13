@@ -17,24 +17,35 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   // Load theme from localStorage on mount
   useEffect(() => {
-    const savedTheme = localStorage.getItem('theme') as Theme;
-    if (savedTheme) {
-      setTheme(savedTheme);
-    } else {
-      // Check system preference
-      const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      setTheme(systemPrefersDark ? 'dark' : 'light');
+    try {
+      const savedTheme = localStorage.getItem('theme') as Theme;
+      if (savedTheme && (savedTheme === 'light' || savedTheme === 'dark')) {
+        setTheme(savedTheme);
+      } else {
+        // Check system preference
+        const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        setTheme(systemPrefersDark ? 'dark' : 'light');
+      }
+    } catch (error) {
+      // Fallback if localStorage is not available
+      setTheme('light');
     }
     setMounted(true);
   }, []);
 
   // Apply theme to document
   useEffect(() => {
-    if (mounted) {
+    if (mounted && typeof window !== 'undefined') {
       const root = document.documentElement;
       root.classList.remove('light', 'dark');
       root.classList.add(theme);
-      localStorage.setItem('theme', theme);
+      
+      try {
+        localStorage.setItem('theme', theme);
+      } catch (error) {
+        // Handle localStorage errors gracefully
+        console.warn('Could not save theme to localStorage:', error);
+      }
     }
   }, [theme, mounted]);
 
@@ -42,13 +53,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     setTheme(prev => prev === 'light' ? 'dark' : 'light');
   };
 
-  // Prevent hydration mismatch
-  if (!mounted) {
-    return <>{children}</>;
-  }
-
+  // Always render the provider, but with a default theme until mounted
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme }}>
+    <ThemeContext.Provider value={{ theme: mounted ? theme : 'light', toggleTheme }}>
       {children}
     </ThemeContext.Provider>
   );
