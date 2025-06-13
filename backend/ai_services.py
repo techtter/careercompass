@@ -184,7 +184,7 @@ You are an expert resume/CV analyzer. Please analyze the following resume text a
 Resume Content:
 {resume_text}
 
-Extract the following information and return it as a valid JSON object:
+Extract the following information and return it as a valid JSON object. Pay special attention to distinguishing between actual job titles and certifications:
 
 {{
     "firstName": "First name only (string)",
@@ -193,33 +193,29 @@ Extract the following information and return it as a valid JSON object:
     "phone": "Phone number if found (string or null)",
     "experienceYears": "Total years of professional work experience (integer)",
     "skills": ["List of technical and professional skills found"],
-    "lastThreeJobTitles": ["Most recent job titles, up to 3"],
+    "lastThreeJobTitles": ["Most recent ACTUAL JOB POSITIONS (not certifications), up to 3. Examples: 'Senior Software Engineer', 'Data Scientist', 'Product Manager'"],
     "experienceSummary": "Brief professional summary (2-3 sentences)",
     "companies": ["Company names where the person worked"],
     "education": ["Educational qualifications with degrees and institutions"],
-    "certifications": ["Professional certifications and credentials"]
+    "certifications": ["Professional certifications and credentials like 'AWS Certified Solutions Architect', 'Azure Certified Data Engineer', etc."]
 }}
 
-Instructions:
-- Be accurate and only extract information that is clearly present
-- For firstName and lastName, extract from the full name at the top
-- For experienceYears, calculate based on work history or stated experience
-- For skills, include both technical (programming languages, tools) and soft skills
-- For companies, extract actual company names, not job titles
-- For education, include full qualification details when available
-- Use null for missing strings, empty arrays for missing lists
-- Return ONLY the JSON object, no other text
+IMPORTANT DISTINCTIONS:
+- lastThreeJobTitles should contain ACTUAL JOB POSITIONS/ROLES (e.g., "Senior Data Engineer", "Lead Software Developer", "Product Manager")
+- certifications should contain CERTIFICATIONS/CREDENTIALS (e.g., "AWS Certified Solutions Architect", "Azure Certified Data Engineer", "PMP Certified")
+- Do NOT put certifications in the lastThreeJobTitles field
+- Do NOT put job titles in the certifications field
 
-JSON:"""
+Return only the JSON object, no additional text."""
 
     try:
         response = claude_client.messages.create(
-            model="claude-3-haiku-20240307",  # Fast and cost-effective model
+            model="claude-3-haiku-20240307",
             max_tokens=1000,
-            temperature=0.1,  # Low temperature for consistent extraction
+            temperature=0.1,
             messages=[
                 {
-                    "role": "user", 
+                    "role": "user",
                     "content": prompt
                 }
             ]
@@ -228,23 +224,28 @@ JSON:"""
         # Extract the JSON from Claude's response
         response_text = response.content[0].text.strip()
         
-        # Clean up the response to ensure it's valid JSON
-        if response_text.startswith('```json'):
-            response_text = response_text.replace('```json', '').replace('```', '').strip()
-        if response_text.startswith('```'):
-            response_text = response_text.replace('```', '').strip()
+        # Try to extract JSON if it's wrapped in markdown or other text
+        if '```json' in response_text:
+            json_start = response_text.find('```json') + 7
+            json_end = response_text.find('```', json_start)
+            response_text = response_text[json_start:json_end].strip()
+        elif '```' in response_text:
+            json_start = response_text.find('```') + 3
+            json_end = response_text.find('```', json_start)
+            response_text = response_text[json_start:json_end].strip()
         
         # Parse and validate the JSON
         parsed_data = json.loads(response_text)
         
-        # Validate and clean the data
-        cleaned_data = _validate_and_clean_parsed_data(parsed_data)
+        # Validate and clean the parsed data
+        return json.dumps(_validate_and_clean_parsed_data(parsed_data))
         
-        return json.dumps(cleaned_data)
-        
-    except Exception as e:
+    except json.JSONDecodeError as e:
         print(f"Claude parsing error: {e}")
-        raise e
+        raise Exception(f"Claude AI parsing failed: {e}")
+    except Exception as e:
+        print(f"Claude API error: {e}")
+        raise Exception(f"Claude AI parsing failed: {e}")
 
 def _parse_resume_with_openai(resume_text: str):
     """
@@ -438,6 +439,7 @@ def _get_mock_resume_parse(resume_text: str):
     companies = []
     job_titles = []
     education = []
+    certifications = []
     experience_years = 2
     
     # Extract email
@@ -486,6 +488,30 @@ def _get_mock_resume_parse(resume_text: str):
                 last_name = words[1].strip().title()
                 break
     
+    # Extract certifications first (to avoid confusing them with job titles)
+    certification_keywords = [
+        'certified', 'certification', 'certificate', 'aws certified', 'azure certified', 
+        'google certified', 'microsoft certified', 'oracle certified', 'cisco certified',
+        'pmp', 'cissp', 'cisa', 'cism', 'comptia', 'itil', 'prince2', 'scrum master',
+        'product owner', 'safe', 'csm', 'psm', 'cka', 'ckad', 'cks'
+    ]
+    
+    resume_lower = resume_text.lower()
+    for line in lines:
+        line_clean = line.strip()
+        line_lower = line_clean.lower()
+        
+        # Look for certification patterns
+        if (any(keyword in line_lower for keyword in certification_keywords) and
+            len(line_clean) > 5 and len(line_clean) < 100 and
+            not any(exclude in line_lower for exclude in ['experience', 'years', 'worked', 'employed'])):
+            
+            # Clean up certification entry
+            cleaned_cert = re.sub(r'\d{4}[-–]\d{4}|\d{4}[-–]present|present|\(.*?\)', '', line_clean, flags=re.IGNORECASE).strip()
+            if (cleaned_cert and len(cleaned_cert) > 5 and 
+                not any(existing.lower() in cleaned_cert.lower() for existing in certifications)):
+                certifications.append(cleaned_cert)
+    
     # Extract skills (enhanced with more comprehensive detection)
     skill_keywords = [
         # Programming Languages
@@ -515,7 +541,6 @@ def _get_mock_resume_parse(resume_text: str):
         'web development', 'frontend', 'backend', 'fullstack', 'full-stack'
     ]
     
-    resume_lower = resume_text.lower()
     # Look for skills section specifically
     skills_section_found = False
     for line in lines:
@@ -579,7 +604,7 @@ def _get_mock_resume_parse(resume_text: str):
     else:
         companies = companies[:3]  # Limit to 3 companies
     
-    # Extract job titles (enhanced detection)
+    # Extract job titles (enhanced detection with better filtering)
     title_keywords = [
         'engineer', 'developer', 'programmer', 'manager', 'director', 'analyst', 'specialist', 
         'coordinator', 'senior', 'junior', 'lead', 'architect', 'consultant', 'designer',
@@ -589,6 +614,20 @@ def _get_mock_resume_parse(resume_text: str):
         'devops', 'qa engineer', 'data scientist', 'ml engineer', 'software engineer',
         'web developer', 'mobile developer', 'frontend developer', 'backend developer',
         'full stack developer', 'fullstack developer', 'ui/ux designer', 'graphic designer'
+    ]
+    
+    # Exclude certification-related terms from job titles
+    certification_exclusions = [
+        'certified', 'certification', 'certificate', 'aws certified', 'azure certified',
+        'google certified', 'microsoft certified', 'oracle certified', 'cisco certified',
+        'pmp', 'cissp', 'cisa', 'cism', 'comptia', 'itil', 'prince2'
+    ]
+    
+    # Additional exclusions for non-title content
+    content_exclusions = [
+        '•', '◦', '-', '*', 'designed', 'implemented', 'developed', 'created', 'managed',
+        'led', 'worked', 'collaborated', 'analyzed', 'built', 'maintained', 'responsible',
+        'duties', 'achievements', 'accomplishments', 'projects', 'technologies used'
     ]
     
     # Look for experience/work section
@@ -606,30 +645,71 @@ def _get_mock_resume_parse(resume_text: str):
             in_experience_section = False
             
         line_clean = line.strip()
+        
+        # Check if this line contains a job title
         if (line_clean and len(line_clean) < 120 and 
-            any(keyword in line_clean.lower() for keyword in title_keywords)):
+            any(keyword in line_clean.lower() for keyword in title_keywords) and
+            not any(exclusion in line_clean.lower() for exclusion in certification_exclusions) and
+            not any(exclusion in line_clean.lower() for exclusion in content_exclusions) and
+            not line_clean.startswith(('•', '◦', '-', '*', '  '))):  # Not a bullet point
+            
             # Remove date patterns, company names, and clean up
             cleaned_title = re.sub(r'\d{4}[-–]\d{4}|\d{4}[-–]present|present|\(\d+\s*years?\)', '', line_clean, flags=re.IGNORECASE)
             cleaned_title = re.sub(r'\bat\s+[\w\s&.,]+?(inc|corp|ltd|llc|company|technologies|systems|solutions)', '', cleaned_title, flags=re.IGNORECASE)
             cleaned_title = cleaned_title.strip()
             
-            if cleaned_title and len(cleaned_title) > 8 and len(cleaned_title) < 80:
+            # Additional filtering to ensure it's a real job title
+            if (cleaned_title and len(cleaned_title) > 8 and len(cleaned_title) < 80 and
+                not any(exclusion in cleaned_title.lower() for exclusion in certification_exclusions) and
+                not any(exclusion in cleaned_title.lower() for exclusion in content_exclusions) and
+                not cleaned_title.lower().startswith(('skills', 'education', 'experience', 'summary', 'objective')) and
+                not cleaned_title.startswith(('•', '◦', '-', '*'))):
+                
                 # Avoid duplicate entries
                 if not any(existing.lower() in cleaned_title.lower() or cleaned_title.lower() in existing.lower() for existing in job_titles):
                     job_titles.append(cleaned_title)
     
+    # If no job titles found from experience section, try to extract from common patterns
+    if not job_titles:
+        # Look for patterns like "Senior Software Engineer at Company" or "Data Scientist | Company"
+        for line in lines:
+            line_clean = line.strip()
+            if (len(line_clean) > 10 and len(line_clean) < 100 and
+                any(keyword in line_clean.lower() for keyword in title_keywords) and
+                not any(exclusion in line_clean.lower() for exclusion in certification_exclusions) and
+                not any(exclusion in line_clean.lower() for exclusion in content_exclusions) and
+                not line_clean.startswith(('•', '◦', '-', '*', '  '))):
+                
+                # Extract title before "at" or "|" or "-"
+                for separator in [' at ', ' | ', ' - ', ' – ']:
+                    if separator in line_clean:
+                        potential_title = line_clean.split(separator)[0].strip()
+                        if (len(potential_title) > 8 and len(potential_title) < 60 and
+                            any(keyword in potential_title.lower() for keyword in title_keywords) and
+                            not any(exclusion in potential_title.lower() for exclusion in content_exclusions)):
+                            job_titles.append(potential_title)
+                            break
+    
     # Remove duplicates and limit
     job_titles = list(dict.fromkeys(job_titles))
     
+    # If still no job titles found, create realistic ones based on skills
     if not job_titles:
-        job_titles = ["Professional Role", "Technical Position"]
+        if any(skill.lower() in ['data', 'analytics', 'machine learning', 'ai'] for skill in skills):
+            job_titles = ["Data Engineer", "Senior Data Analyst"]
+        elif any(skill.lower() in ['software', 'programming', 'development'] for skill in skills):
+            job_titles = ["Software Engineer", "Senior Developer"]
+        elif any(skill.lower() in ['cloud', 'aws', 'azure', 'devops'] for skill in skills):
+            job_titles = ["Cloud Engineer", "DevOps Specialist"]
+        else:
+            job_titles = ["Software Developer", "Technical Specialist"]
     else:
         job_titles = job_titles[:3]  # Limit to 3 job titles
     
     # Extract education (enhanced detection)
     education_keywords = [
-        'bachelor', 'master', 'degree', 'university', 'college', 'phd', 'doctorate', 'certificate',
-        'diploma', 'certification', 'mba', 'bsc', 'msc', 'ba', 'ma', 'bs', 'ms', 'phd',
+        'bachelor', 'master', 'degree', 'university', 'college', 'phd', 'doctorate', 'diploma',
+        'mba', 'bsc', 'msc', 'ba', 'ma', 'bs', 'ms', 'phd',
         'associate degree', 'graduate', 'undergraduate', 'postgraduate', 'school', 'institute',
         'academy', 'coursera', 'udemy', 'edx', 'mit', 'stanford', 'harvard', 'berkeley'
     ]
@@ -651,7 +731,9 @@ def _get_mock_resume_parse(resume_text: str):
         line_clean = line.strip()
         if (any(keyword in line_lower for keyword in education_keywords) and 
             len(line_clean) < 200 and len(line_clean) > 10 and
-            '@' not in line_clean):  # Skip email addresses
+            '@' not in line_clean and
+            not any(exclusion in line_lower for exclusion in certification_exclusions)):  # Skip certifications
+            
             # Clean up the education entry
             cleaned_education = re.sub(r'\d{4}[-–]\d{4}|\d{4}[-–]present|present', '', line_clean, flags=re.IGNORECASE).strip()
             if (cleaned_education and 
@@ -666,6 +748,12 @@ def _get_mock_resume_parse(resume_text: str):
         education = ["University Education", "Professional Training"]
     else:
         education = education[:4]  # Increased limit to 4 education entries
+    
+    # Clean up certifications list
+    if not certifications:
+        certifications = ["Professional Development", "Industry Training"]
+    else:
+        certifications = certifications[:5]  # Limit to 5 certifications
     
     # Estimate experience years based on content
     if 'senior' in resume_text.lower() or 'lead' in resume_text.lower():
@@ -688,7 +776,7 @@ def _get_mock_resume_parse(resume_text: str):
         "experienceSummary": f"Experienced professional with {experience_years} years in the field. Demonstrates strong technical and analytical skills with a proven track record of successful project delivery and team collaboration.",
         "companies": companies,
         "education": education,
-        "certifications": ["Professional Development", "Industry Training"]
+        "certifications": certifications
     }
     
     return json.dumps(mock_data)
