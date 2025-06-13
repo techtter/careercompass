@@ -1,0 +1,17 @@
+{
+  "user_id": "user_1",
+  "filename": "jane_smith_cv.txt",
+  "file_type": "text/plain",
+  "raw_text": "Jane Smith CV content...",
+  "parsed_data": {
+    "name": "Jane Smith",
+    "email": "jane.smith@email.com",
+    "phone": "555-987-6543",
+    "location": "Austin, TX",
+    "experience": "4 years in product management",
+    "skills": ["Product Strategy", "Agile", "Scrum", "User Research", "Analytics", "SQL", "Figma"],
+    "lastTwoJobs": ["Senior Product Manager", "Product Manager"],
+    "education": "MBA Business Administration",
+    "summary": "Results-driven product manager with proven track record of launching successful digital products and driving user growth."
+  }
+} 

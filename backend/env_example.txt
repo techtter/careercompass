@@ -1,0 +1,24 @@
+# OpenAI API Configuration
+OPENAI_API_KEY=your_openai_api_key_here
+
+# Supabase Configuration
+SUPABASE_URL=your_supabase_url_here
+SUPABASE_ANON_KEY=your_supabase_anon_key_here
+
+# Job APIs Configuration
+
+# Rapid API (JSearch, Active Jobs DB)
+RAPID_API_KEY=your_rapid_api_key_here
+
+# Adzuna API (Indeed, LinkedIn aggregator)
+ADZUNA_APP_ID=your_adzuna_app_id_here
+ADZUNA_APP_KEY=your_adzuna_app_key_here
+
+# Reed.co.uk API (UK Jobs)
+REED_API_KEY=your_reed_api_key_here
+
+# EURES API (European Jobs) - No key required for public API
+
+# Optional: Development settings
+BACKEND_URL=http://localhost:8000
+DEBUG=true 

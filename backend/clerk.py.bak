@@ -1,0 +1,22 @@
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+clerk_api_key = os.environ.get("CLERK_SECRET_KEY")
+
+# Initialize Clerk with graceful fallback for development
+clerk_available = False
+
+try:
+    if clerk_api_key:
+        # Import clerk only if we have the API key
+        import clerk
+        clerk.api_key = clerk_api_key
+        clerk_available = True
+        print("✅ Clerk authentication configured")
+    else:
+        print("⚠️  Clerk not available: Missing CLERK_SECRET_KEY")
+except Exception as e:
+    print(f"⚠️  Clerk not available: {e}")
+    clerk_available = False 

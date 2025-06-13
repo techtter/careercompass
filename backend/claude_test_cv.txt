@@ -1,0 +1,14 @@
+John Doe
+Senior Data Scientist
+john.doe@example.com
+Phone: (555) 123-4567
+
+Experience:
+Senior Data Scientist at Google (2020-2023)
+Data Analyst at Microsoft (2018-2020)
+
+Skills:
+Python, Machine Learning, TensorFlow, SQL, AWS
+
+Education:
+Master of Science in Data Science, MIT, 2018

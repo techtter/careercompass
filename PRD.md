@@ -97,13 +97,13 @@
 
  ## **5. Technical Requirements**
 
- - Frontend: React.js + Next.js for Web. React Native for cross-platform mobile
+ - Frontend: React.js + Next.js for Web. React Native for cross-platform mobile app
  - Backend: Python (FastAPI)
- - AI/ML: RESTful API calls to OpenAI, Deepseek AI, Gemini AI, Python ( LangChain, LangGraph, Model Context Protocol or A2A ), OpenAI API integration.
+ - AI : RESTful API calls to OpenAI, Deepseek AI, Gemini AI, Python ( LangChain, LangGraph, Model Context Protocol or A2A ), OpenAI API integration.
 - Database: Supabase.
-- Integrations: EURES Jobs API, LinkedIn API, Jsearch api in and Active Jobs Rapid API, e-learning APIs (Coursera, Udemy 
+- Integrations: EURES Jobs API, LinkedIn API, Indeed, Jsearch api in and Active Jobs DB aoi from Rapid API platform, e-learning APIs (Coursera, Udemy and other job portals from Europe, UK and US.
 - DeepLearning.ai, Linkedin Learning), Email/SMS notifications.
-- Authentication: OAuth 2.0, JWT.
+- Authentication: Google OAuth 2.0
 - Hosting: GCP, AWS, or Azure.
 
 ## **6. User Flows**
