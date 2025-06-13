@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/Input";
 import { Label } from "@/components/ui/Label";
 import { Textarea } from "@/components/ui/Textarea";
 import Link from "next/link";
+import ReactMarkdown from "react-markdown";
 
 export default function SkillGapAnalysisPage() {
     const { getToken, isLoaded, isSignedIn } = useAuth();
@@ -17,6 +18,7 @@ export default function SkillGapAnalysisPage() {
     // State for Skill Gap Analysis
     const [skills, setSkills] = useState("");
     const [jobDescription, setJobDescription] = useState("");
+    const [targetRole, setTargetRole] = useState("");
     const [skillGapAnalysis, setSkillGapAnalysis] = useState("");
     const [loadingSkillGap, setLoadingSkillGap] = useState(false);
 
@@ -40,20 +42,23 @@ export default function SkillGapAnalysisPage() {
                     Authorization: `Bearer ${token}`,
                 },
                 body: JSON.stringify({
+                    user_id: user?.id,
                     skills: skills.split(",").map((skill) => skill.trim()),
                     job_description: jobDescription,
+                    target_role: targetRole || null,
                 }),
             });
 
             if (!response.ok) {
-                throw new Error("Failed to analyze skill gap");
+                const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+                throw new Error(errorData.error || "Failed to analyze skill gap");
             }
 
             const data = await response.json();
             setSkillGapAnalysis(data.analysis);
         } catch (error) {
-            console.error(error);
-            alert("Failed to analyze skill gap. Please try again.");
+            console.error('Skill gap analysis error:', error);
+            alert(`Failed to analyze skill gap: ${error instanceof Error ? error.message : 'Please try again.'}`);
         } finally {
             setLoadingSkillGap(false);
         }
@@ -133,6 +138,20 @@ export default function SkillGapAnalysisPage() {
                         </div>
                         
                         <div>
+                            <Label htmlFor="target-role">Target Role (Optional)</Label>
+                            <Input
+                                id="target-role"
+                                value={targetRole}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTargetRole(e.target.value)}
+                                placeholder="e.g., Senior Software Engineer, Data Scientist, Product Manager"
+                                className="mt-2"
+                            />
+                            <p className="text-sm text-gray-500 mt-1">
+                                Specify your target role for more focused analysis
+                            </p>
+                        </div>
+                        
+                        <div>
                             <Label htmlFor="job-description">Target Job Description</Label>
                             <Textarea
                                 id="job-description"
@@ -154,14 +173,70 @@ export default function SkillGapAnalysisPage() {
                     </form>
 
                     {skillGapAnalysis && (
-                        <div className="mt-8 p-6 border rounded-lg bg-gradient-to-r from-green-50 to-emerald-50 border-green-200">
-                            <h3 className="text-2xl font-semibold mb-4 text-green-900">
+                        <div className="mt-8 p-8 border rounded-lg bg-gradient-to-r from-green-50 to-emerald-50 border-green-200 shadow-lg">
+                            <h3 className="text-2xl font-semibold mb-6 text-green-900 flex items-center">
                                 🎯 Your Skill Gap Analysis
                             </h3>
-                            <div className="prose max-w-none">
-                                <pre className="whitespace-pre-wrap font-sans text-gray-800 leading-relaxed">
+                            <div className="prose prose-lg max-w-none text-gray-800">
+                                <ReactMarkdown
+                                    components={{
+                                        h1: ({node, ...props}) => (
+                                            <h1 className="text-3xl font-bold text-green-900 mb-6 mt-8 pb-2 border-b-2 border-green-200" {...props} />
+                                        ),
+                                        h2: ({node, ...props}) => (
+                                            <h2 className="text-2xl font-semibold text-green-800 mb-4 mt-6 pb-1 border-b border-green-100" {...props} />
+                                        ),
+                                        h3: ({node, ...props}) => (
+                                            <h3 className="text-xl font-medium text-green-700 mb-3 mt-5" {...props} />
+                                        ),
+                                        h4: ({node, ...props}) => (
+                                            <h4 className="text-lg font-medium text-green-600 mb-2 mt-4" {...props} />
+                                        ),
+                                        p: ({node, ...props}) => (
+                                            <p className="mb-4 text-gray-700 leading-relaxed text-base" {...props} />
+                                        ),
+                                        ul: ({node, ...props}) => (
+                                            <ul className="list-disc list-outside mb-4 pl-6 space-y-2" {...props} />
+                                        ),
+                                        ol: ({node, ...props}) => (
+                                            <ol className="list-decimal list-outside mb-4 pl-6 space-y-2" {...props} />
+                                        ),
+                                        li: ({node, ...props}) => (
+                                            <li className="text-gray-700 leading-relaxed text-base" {...props} />
+                                        ),
+                                        strong: ({node, ...props}) => (
+                                            <strong className="font-semibold text-gray-900" {...props} />
+                                        ),
+                                        em: ({node, ...props}) => (
+                                            <em className="italic text-gray-600" {...props} />
+                                        ),
+                                        code: ({node, ...props}) => (
+                                            <code className="bg-green-100 px-2 py-1 rounded text-sm text-green-800 font-mono" {...props} />
+                                        ),
+                                        pre: ({node, ...props}) => (
+                                            <pre className="bg-gray-100 p-4 rounded-lg overflow-x-auto mb-4 text-sm" {...props} />
+                                        ),
+                                        blockquote: ({node, ...props}) => (
+                                            <blockquote className="border-l-4 border-green-400 pl-6 py-2 italic text-gray-600 my-6 bg-green-25" {...props} />
+                                        ),
+                                        table: ({node, ...props}) => (
+                                            <div className="overflow-x-auto mb-4">
+                                                <table className="min-w-full border-collapse border border-gray-300" {...props} />
+                                            </div>
+                                        ),
+                                        th: ({node, ...props}) => (
+                                            <th className="border border-gray-300 px-4 py-2 bg-green-100 font-semibold text-left" {...props} />
+                                        ),
+                                        td: ({node, ...props}) => (
+                                            <td className="border border-gray-300 px-4 py-2" {...props} />
+                                        ),
+                                        hr: ({node, ...props}) => (
+                                            <hr className="my-6 border-t-2 border-green-200" {...props} />
+                                        ),
+                                    }}
+                                >
                                     {skillGapAnalysis}
-                                </pre>
+                                </ReactMarkdown>
                             </div>
                         </div>
                     )}

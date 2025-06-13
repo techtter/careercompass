@@ -5,12 +5,16 @@ from ai_services import generate_career_path, analyze_skill_gap, optimize_resume
 import asyncio
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
-import PyPDF2
+import pdfplumber
 import docx
 import io
 import json
 from dotenv import load_dotenv
-from database import CVRecordService, CareerPathService, SkillGapService, ResumeOptimizationService, database_available
+from database import (
+    CVRecordService, CareerPathService, SkillGapService, 
+    ResumeOptimizationService, LearningProgressService, database_available
+)
+import base64
 
 # Load environment variables from .env file
 load_dotenv()
@@ -88,6 +92,7 @@ class SkillGapRequest(BaseModel):
     cv_record_id: Optional[int] = None
     skills: List[str]
     job_description: str
+    target_role: Optional[str] = None
 
 class ResumeOptimizationRequest(BaseModel):
     user_id: str
@@ -111,21 +116,41 @@ class JobRecommendationRequest(BaseModel):
     lastTwoJobs: List[str]
     location: Optional[str] = None
 
-def extract_text_from_file(file: UploadFile) -> str:
-    """Extract text from uploaded file based on file type"""
+class LearningGoalRequest(BaseModel):
+    user_id: str
+    skill_gap_id: Optional[str] = None
+    skill_name: str
+    learning_resource_type: str  # course, certification, book, video, etc.
+    learning_resource_name: str
+    learning_resource_url: Optional[str] = None
+    target_completion_date: Optional[str] = None
+    priority: str = "medium"  # high, medium, low
+
+class LearningProgressUpdateRequest(BaseModel):
+    goal_id: str
+    progress_percentage: int  # 0-100
+    status: str  # not_started, in_progress, completed, paused
+    notes: Optional[str] = None
+
+async def extract_text_from_file(file: UploadFile) -> str:
+    """Extract text from uploaded file based on file type - optimized for Claude AI parsing"""
     try:
         if file.content_type == 'application/pdf':
-            # Extract text from PDF
-            pdf_content = io.BytesIO(file.file.read())
-            pdf_reader = PyPDF2.PdfReader(pdf_content)
+            # Extract text from PDF using pdfplumber (better than PyPDF2)
+            file_content = await file.read()
+            pdf_content = io.BytesIO(file_content)
             text = ""
-            for page in pdf_reader.pages:
-                text += page.extract_text() + "\n"
+            with pdfplumber.open(pdf_content) as pdf:
+                for page in pdf.pages:
+                    page_text = page.extract_text()
+                    if page_text:
+                        text += page_text + "\n"
             return text
         
         elif file.content_type in ['application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/msword']:
             # Extract text from DOCX
-            doc_content = io.BytesIO(file.file.read())
+            file_content = await file.read()
+            doc_content = io.BytesIO(file_content)
             doc = docx.Document(doc_content)
             text = ""
             for paragraph in doc.paragraphs:
@@ -134,7 +159,7 @@ def extract_text_from_file(file: UploadFile) -> str:
         
         elif file.content_type == 'text/plain':
             # Extract text from TXT
-            content = file.file.read()
+            content = await file.read()
             return content.decode('utf-8')
         
         else:
@@ -158,10 +183,10 @@ async def parse_resume(file: UploadFile = File(...)):
         file_content = await file.read()
         
         # Reset file pointer for text extraction
-        file.file.seek(0)
+        await file.seek(0)
         
         # Extract text from the uploaded file
-        resume_text = extract_text_from_file(file)
+        resume_text = await extract_text_from_file(file)
         
         if not resume_text.strip():
             raise HTTPException(status_code=400, detail="Could not extract text from the uploaded file")
@@ -347,7 +372,7 @@ async def update_user_cv(user_id: str, file: UploadFile = File(...)):
         file.file.seek(0)
         
         # Extract text from the uploaded file
-        resume_text = extract_text_from_file(file)
+        resume_text = await extract_text_from_file(file)
         
         if not resume_text.strip():
             raise HTTPException(status_code=400, detail="Could not extract text from the uploaded file")
@@ -358,7 +383,6 @@ async def update_user_cv(user_id: str, file: UploadFile = File(...)):
         # Update the existing CV record
         file_content_b64 = None
         try:
-            import base64
             file_content_b64 = base64.b64encode(file_content).decode('utf-8')
         except Exception:
             pass  # Continue without base64 encoding if it fails
@@ -424,13 +448,13 @@ async def get_career_path(request: CareerPathRequest):
         
         # Save career path to database
         if request.cv_record_id:
-            CareerPathService.create_career_path(
-                cv_record_id=request.cv_record_id,
-                user_id=request.user_id,
-                job_title=request.job_title,
-                experience_level=request.experience,
-                career_path_data=career_path
-            )
+            CareerPathService.create_career_path({
+                "cv_record_id": request.cv_record_id,
+                "user_id": request.user_id,
+                "job_title": request.job_title,
+                "experience_level": request.experience,
+                "career_path_data": career_path
+            })
         
         return {"career_path": career_path}
     except Exception as e:
@@ -453,7 +477,8 @@ async def get_skill_gap_analysis(request: SkillGapRequest):
         
         analysis = analyze_skill_gap(
             skills=skills_to_use,
-            job_description=request.job_description
+            job_description=request.job_description,
+            target_role=request.target_role
         )
         
         # Save skill gap analysis to database
@@ -543,6 +568,69 @@ async def get_job_recommendations(request: JobRecommendationRequest):
         }
     except Exception as e:
         print(f"Error getting job recommendations: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/learning-goals")
+async def create_learning_goal(request: LearningGoalRequest):
+    """Create a new learning goal based on skill gap analysis"""
+    try:
+        goal_data = {
+            "user_id": request.user_id,
+            "skill_gap_id": request.skill_gap_id,
+            "skill_name": request.skill_name,
+            "learning_resource_type": request.learning_resource_type,
+            "learning_resource_name": request.learning_resource_name,
+            "learning_resource_url": request.learning_resource_url,
+            "target_completion_date": request.target_completion_date,
+            "priority": request.priority,
+            "progress_percentage": 0,
+            "status": "not_started"
+        }
+        
+        learning_goal = LearningProgressService.create_learning_goal(goal_data)
+        
+        if learning_goal:
+            return {"success": True, "learning_goal": learning_goal}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to create learning goal")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/api/learning-goals/{goal_id}/progress")
+async def update_learning_progress(goal_id: str, request: LearningProgressUpdateRequest):
+    """Update progress for a learning goal"""
+    try:
+        progress_data = {
+            "progress_percentage": request.progress_percentage,
+            "status": request.status,
+            "notes": request.notes
+        }
+        
+        updated_goal = LearningProgressService.update_learning_progress(goal_id, progress_data)
+        
+        if updated_goal:
+            return {"success": True, "learning_goal": updated_goal}
+        else:
+            raise HTTPException(status_code=404, detail="Learning goal not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/learning-goals/{user_id}")
+async def get_user_learning_goals(user_id: str):
+    """Get all learning goals for a user"""
+    try:
+        learning_goals = LearningProgressService.get_learning_goals_by_user(user_id)
+        return {"learning_goals": learning_goals}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/learning-recommendations/{skill_gap_id}")
+async def get_learning_recommendations(skill_gap_id: str):
+    """Get learning recommendations based on skill gap analysis"""
+    try:
+        recommendations = LearningProgressService.get_learning_recommendations_by_skill_gap(skill_gap_id)
+        return {"recommendations": recommendations}
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 # Webhook handler temporarily disabled for development 
