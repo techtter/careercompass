@@ -7,9 +7,17 @@ type Theme = 'light' | 'dark';
 interface ThemeContextType {
   theme: Theme;
   toggleTheme: () => void;
+  mounted: boolean;
 }
 
-const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
+// Create a default context value to prevent undefined errors
+const defaultContextValue: ThemeContextType = {
+  theme: 'light',
+  toggleTheme: () => {},
+  mounted: false,
+};
+
+const ThemeContext = createContext<ThemeContextType>(defaultContextValue);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<Theme>('light');
@@ -61,7 +69,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   // Always provide the context value
   const contextValue: ThemeContextType = {
     theme,
-    toggleTheme
+    toggleTheme,
+    mounted
   };
 
   return (
@@ -73,8 +82,11 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
 export function useTheme() {
   const context = useContext(ThemeContext);
-  if (context === undefined) {
-    throw new Error('useTheme must be used within a ThemeProvider');
+  // Since we now have a default value, this should never be undefined
+  // But we'll keep the check for safety
+  if (!context) {
+    console.warn('useTheme called outside of ThemeProvider, using default values');
+    return defaultContextValue;
   }
   return context;
 } 
