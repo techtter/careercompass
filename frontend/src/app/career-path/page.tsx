@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/Input";
 import { Label } from "@/components/ui/Label";
 import { Textarea } from "@/components/ui/Textarea";
 import Link from "next/link";
+import ReactMarkdown from "react-markdown";
 
 export default function CareerPathPage() {
     const { getToken, isLoaded, isSignedIn } = useAuth();
@@ -37,7 +38,7 @@ export default function CareerPathPage() {
             setIsLoadingCV(true);
             try {
                 const token = await getToken();
-                const response = await fetch(`/api/cv-records/${user.id}`, {
+                const response = await fetch(`/api/user-profile/${user.id}`, {
                     headers: {
                         Authorization: `Bearer ${token}`,
                     },
@@ -45,17 +46,32 @@ export default function CareerPathPage() {
 
                 if (response.ok) {
                     const data = await response.json();
-                    if (data && data.id) {
-                        setCvRecord(data);
+                    
+                    if (data.user_exists && data.user_profile && data.cv_record_id) {
+                        // Create CV record structure from user profile data
+                        const cvData = {
+                            id: data.cv_record_id,
+                            filename: data.cv_filename || "CV",
+                            user_profile: data.user_profile,
+                            raw_text: data.cv_raw_text || "",
+                            last_updated: data.last_updated
+                        };
+                        
+                        setCvRecord(cvData);
+                        
                         // Pre-fill form with CV data
-                        if (data.last_two_jobs && data.last_two_jobs.length > 0) {
-                            setJobTitle(data.last_two_jobs[0]);
+                        if (data.user_profile.lastThreeJobTitles && data.user_profile.lastThreeJobTitles.length > 0) {
+                            setJobTitle(data.user_profile.lastThreeJobTitles[0]);
                         }
-                        if (data.experience) {
-                            setExperience(data.experience);
+                        
+                        if (data.user_profile.experienceYears) {
+                            setExperience(`${data.user_profile.experienceYears} years of experience`);
+                        } else if (data.user_profile.experienceSummary) {
+                            setExperience(data.user_profile.experienceSummary);
                         }
-                        if (data.skills && Array.isArray(data.skills)) {
-                            setSkills(data.skills.join(", "));
+                        
+                        if (data.user_profile.skills && Array.isArray(data.user_profile.skills)) {
+                            setSkills(data.user_profile.skills.join(", "));
                         }
                     }
                 }
@@ -220,14 +236,68 @@ export default function CareerPathPage() {
                     </form>
 
                     {careerPath && (
-                        <div className="mt-8 p-6 border rounded-lg bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
-                            <h3 className="text-2xl font-semibold mb-4 text-blue-900">
+                        <div className="mt-8 p-8 border rounded-lg bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200 shadow-lg">
+                            <h3 className="text-2xl font-semibold mb-6 text-blue-900 flex items-center">
                                 🎯 Your Personalized Career Path
                             </h3>
-                            <div className="prose max-w-none">
-                                <pre className="whitespace-pre-wrap font-sans text-gray-800 leading-relaxed">
+                            <div className="prose prose-lg max-w-none text-gray-800">
+                                <ReactMarkdown
+                                    components={{
+                                        h1: ({node, ...props}) => (
+                                            <h1 className="text-3xl font-bold text-blue-900 mb-6 mt-8 pb-2 border-b-2 border-blue-200" {...props} />
+                                        ),
+                                        h2: ({node, ...props}) => (
+                                            <h2 className="text-2xl font-semibold text-blue-800 mb-4 mt-6 pb-1 border-b border-blue-100" {...props} />
+                                        ),
+                                        h3: ({node, ...props}) => (
+                                            <h3 className="text-xl font-medium text-blue-700 mb-3 mt-5" {...props} />
+                                        ),
+                                        h4: ({node, ...props}) => (
+                                            <h4 className="text-lg font-medium text-blue-600 mb-2 mt-4" {...props} />
+                                        ),
+                                        p: ({node, ...props}) => (
+                                            <p className="mb-4 text-gray-700 leading-relaxed text-base" {...props} />
+                                        ),
+                                        ul: ({node, ...props}) => (
+                                            <ul className="list-disc list-outside mb-4 pl-6 space-y-2" {...props} />
+                                        ),
+                                        ol: ({node, ...props}) => (
+                                            <ol className="list-decimal list-outside mb-4 pl-6 space-y-2" {...props} />
+                                        ),
+                                        li: ({node, ...props}) => (
+                                            <li className="text-gray-700 leading-relaxed" {...props} />
+                                        ),
+                                        strong: ({node, ...props}) => (
+                                            <strong className="font-semibold text-blue-800" {...props} />
+                                        ),
+                                        em: ({node, ...props}) => (
+                                            <em className="italic text-blue-700" {...props} />
+                                        ),
+                                        code: ({node, ...props}) => (
+                                            <code className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-sm font-mono" {...props} />
+                                        ),
+                                        pre: ({node, ...props}) => (
+                                            <pre className="bg-gray-100 p-4 rounded-lg overflow-x-auto mb-4" {...props} />
+                                        ),
+                                        blockquote: ({node, ...props}) => (
+                                            <blockquote className="border-l-4 border-blue-300 pl-4 italic text-blue-700 mb-4" {...props} />
+                                        ),
+                                        table: ({node, ...props}) => (
+                                            <table className="w-full border-collapse border border-gray-300 mb-4" {...props} />
+                                        ),
+                                        th: ({node, ...props}) => (
+                                            <th className="border border-gray-300 px-4 py-2 bg-blue-100 font-semibold text-left" {...props} />
+                                        ),
+                                        td: ({node, ...props}) => (
+                                            <td className="border border-gray-300 px-4 py-2" {...props} />
+                                        ),
+                                        hr: ({node, ...props}) => (
+                                            <hr className="my-6 border-t-2 border-blue-200" {...props} />
+                                        ),
+                                    }}
+                                >
                                     {careerPath}
-                                </pre>
+                                </ReactMarkdown>
                             </div>
                         </div>
                     )}
