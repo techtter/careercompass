@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Label } from "@/components/ui/Label";
 import Link from "next/link";
+import SkillsWordCloud from "@/components/ui/SkillsWordCloud";
 
 // Add Clerk type declaration for TypeScript
 declare global {
@@ -601,28 +602,16 @@ export default function Dashboard() {
                     </div>
                 )}
 
-                {/* Success/Error Messages for new users */}
-                {!isExistingUser && (parseSuccessMessage || parseErrorMessage) && (
+                {/* Error Messages for new users */}
+                {!isExistingUser && parseErrorMessage && (
                     <div className="bg-white rounded-lg shadow-md p-6">
-                        {/* Success Message */}
-                        {parseSuccessMessage && (
-                            <div className="flex items-center space-x-2 text-green-700 bg-green-50 border border-green-200 rounded-md p-4">
-                                <svg className="w-5 h-5 text-green-600" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                                </svg>
-                                <span className="font-medium">{parseSuccessMessage}</span>
-                            </div>
-                        )}
-                        
                         {/* Error Message */}
-                        {parseErrorMessage && (
-                            <div className="flex items-center space-x-2 text-red-700 bg-red-50 border border-red-200 rounded-md p-4">
-                                <svg className="w-5 h-5 text-red-600" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                                </svg>
-                                <span className="font-medium">{parseErrorMessage}</span>
-                            </div>
-                        )}
+                        <div className="flex items-center space-x-2 text-red-700 bg-red-50 border border-red-200 rounded-md p-4">
+                            <svg className="w-5 h-5 text-red-600" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                            </svg>
+                            <span className="font-medium">{parseErrorMessage}</span>
+                        </div>
                     </div>
                 )}
 
@@ -802,22 +791,9 @@ export default function Dashboard() {
                             {/* Skills Section - Full Width */}
                             <div className="mt-8 pt-6 border-t border-gray-200">
                                 <h3 className="text-lg font-semibold text-gray-800 mb-4 border-b-2 border-blue-100 pb-2">
-                                    🛠️ Skills
+                                    🛠️ Skills Word Cloud
                                 </h3>
-                                {parsedResumeData.skills && parsedResumeData.skills.length > 0 ? (
-                                    <div className="flex flex-wrap gap-3">
-                                        {parsedResumeData.skills.map((skill, index) => (
-                                            <span 
-                                                key={index}
-                                                className="bg-gradient-to-r from-blue-100 to-blue-200 text-blue-800 px-3 py-2 rounded-full text-sm font-medium border border-blue-300 hover:shadow-md transition-shadow"
-                                            >
-                                                {skill}
-                                            </span>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <p className="text-gray-500 italic">No skills found</p>
-                                )}
+                                <SkillsWordCloud skills={parsedResumeData.skills || []} />
                             </div>
                         </div>
 
@@ -1032,22 +1008,9 @@ export default function Dashboard() {
                                 {/* Skills Section - Full Width */}
                                 <div className="pt-6 border-t border-gray-200">
                                     <h3 className="text-lg font-semibold text-gray-800 mb-4 border-b-2 border-blue-100 pb-2">
-                                        🛠️ Skills
+                                        🛠️ Skills Word Cloud
                                     </h3>
-                                    {userProfile.skills && userProfile.skills.length > 0 ? (
-                                        <div className="flex flex-wrap gap-3">
-                                            {userProfile.skills.map((skill, index) => (
-                                                <span 
-                                                    key={index}
-                                                    className="bg-gradient-to-r from-blue-100 to-blue-200 text-blue-800 px-3 py-2 rounded-full text-sm font-medium border border-blue-300 hover:shadow-md transition-shadow"
-                                                >
-                                                    {skill}
-                                                </span>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <p className="text-gray-500 italic">No skills found</p>
-                                    )}
+                                    <SkillsWordCloud skills={userProfile.skills || []} />
                                 </div>
                             </div>
 
