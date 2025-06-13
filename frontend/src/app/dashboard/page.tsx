@@ -25,6 +25,7 @@ interface UserProfile {
   lastName: string;
   email?: string | null;
   phone?: string | null;
+  location?: string | null;
   experienceYears: number;
   skills: string[];
   lastThreeJobTitles: string[];
@@ -74,6 +75,8 @@ export default function Dashboard() {
     const [error, setError] = useState<string | null>(null);
     const [showFileUpload, setShowFileUpload] = useState(false);
     const [showProfileSection, setShowProfileSection] = useState(false);
+    const [isEditingProfile, setIsEditingProfile] = useState(false);
+    const [editableProfile, setEditableProfile] = useState<UserProfile | null>(null);
 
     useEffect(() => {
         const fetchUserProfile = async () => {
@@ -354,6 +357,69 @@ export default function Dashboard() {
             // Silently fail - don't show error to user for job recommendations
         } finally {
             setLoadingJobs(false);
+        }
+    };
+
+    // Handle profile editing
+    const handleEditProfile = () => {
+        setEditableProfile({ ...userProfile! });
+        setIsEditingProfile(true);
+    };
+
+    const handleCancelEdit = () => {
+        setEditableProfile(null);
+        setIsEditingProfile(false);
+    };
+
+    const handleSaveProfile = async () => {
+        if (!editableProfile || !user?.id) return;
+
+        setIsSavingProfile(true);
+        setParseSuccessMessage("");
+        setParseErrorMessage("");
+        
+        try {
+            const token = await getToken();
+            const response = await fetch('/api/save-cv', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                    user_id: user.id,
+                    filename: 'profile_data.json',
+                    file_type: 'application/json',
+                    raw_text: JSON.stringify(editableProfile),
+                    parsed_data: editableProfile,
+                }),
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to save profile');
+            }
+
+            const result = await response.json();
+            
+            // Update user profile with edited data
+            setUserProfile(editableProfile);
+            setEditableProfile(null);
+            setIsEditingProfile(false);
+            setSavedCvId(result.cv_record_id);
+            setLastUpdated(new Date().toISOString());
+            setParseSuccessMessage('✅ Profile updated successfully!');
+            
+            // Save to localStorage
+            localStorage.setItem('userProfile', JSON.stringify(editableProfile));
+            
+            // Fetch new job recommendations based on updated profile
+            await fetchJobRecommendations(editableProfile);
+            
+        } catch (error) {
+            console.error('Error saving profile:', error);
+            setParseErrorMessage('Error saving profile. Please try again.');
+        } finally {
+            setIsSavingProfile(false);
         }
     };
 
@@ -693,6 +759,15 @@ export default function Dashboard() {
                                                     <span className="text-gray-900 ml-2">{parsedResumeData.phone}</span>
                                                 </div>
                                             )}
+                                            {parsedResumeData.location && (
+                                                <div className="flex items-center">
+                                                    <span className="font-medium text-gray-600 w-20">Country:</span>
+                                                    <span className="text-gray-900 ml-2 flex items-center">
+                                                        <span className="mr-2">🌍</span>
+                                                        {parsedResumeData.location}
+                                                    </span>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
 
@@ -853,20 +928,29 @@ export default function Dashboard() {
                                         <p className="text-sm text-gray-500 mt-1">Last updated: {lastUpdated}</p>
                                     )}
                                 </div>
-                                <Button 
-                                    onClick={() => document.getElementById('cv-update-upload')?.click()}
-                                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 font-medium"
-                                    disabled={isUploading}
-                                >
-                                    {isUploading ? (
-                                        <>
-                                            <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2"></div>
-                                            Updating...
-                                        </>
-                                    ) : (
-                                        <>📤 Update CV</>
-                                    )}
-                                </Button>
+                                <div className="flex space-x-2">
+                                    <Button 
+                                        onClick={handleEditProfile}
+                                        className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 font-medium"
+                                        disabled={isUploading || isEditingProfile}
+                                    >
+                                        ✏️ Edit Profile
+                                    </Button>
+                                    <Button 
+                                        onClick={() => document.getElementById('cv-update-upload')?.click()}
+                                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 font-medium"
+                                        disabled={isUploading || isEditingProfile}
+                                    >
+                                        {isUploading ? (
+                                            <>
+                                                <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2"></div>
+                                                Updating...
+                                            </>
+                                        ) : (
+                                            <>📤 Update CV</>
+                                        )}
+                                    </Button>
+                                </div>
                             </div>
                         </div>
 
@@ -879,6 +963,141 @@ export default function Dashboard() {
                             className="hidden"
                             disabled={isUploading}
                         />
+
+                        {/* Success/Error Messages for Profile Updates */}
+                        {parseSuccessMessage && (
+                            <div className="flex items-center space-x-2 text-green-700 bg-green-50 border border-green-200 rounded-md p-4 mb-6">
+                                <svg className="w-5 h-5 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                                </svg>
+                                <span className="font-medium">{parseSuccessMessage}</span>
+                            </div>
+                        )}
+                        
+                        {parseErrorMessage && (
+                            <div className="flex items-center space-x-2 text-red-700 bg-red-50 border border-red-200 rounded-md p-4 mb-6">
+                                <svg className="w-5 h-5 text-red-600" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                                </svg>
+                                <span className="font-medium">{parseErrorMessage}</span>
+                            </div>
+                        )}
+
+                        {/* Editable Profile Form */}
+                        {isEditingProfile && editableProfile && (
+                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6">
+                                <div className="flex justify-between items-center mb-6">
+                                    <h3 className="text-xl font-bold text-gray-800">✏️ Edit Your Profile</h3>
+                                    <div className="flex space-x-2">
+                                        <Button 
+                                            onClick={handleSaveProfile}
+                                            disabled={isSavingProfile}
+                                            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 font-medium"
+                                        >
+                                            {isSavingProfile ? (
+                                                <>
+                                                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2"></div>
+                                                    Saving...
+                                                </>
+                                            ) : (
+                                                <>💾 Save Profile</>
+                                            )}
+                                        </Button>
+                                        <Button 
+                                            onClick={handleCancelEdit}
+                                            disabled={isSavingProfile}
+                                            variant="outline"
+                                            className="px-4 py-2 font-medium"
+                                        >
+                                            Cancel
+                                        </Button>
+                                    </div>
+                                </div>
+                                
+                                <div className="grid md:grid-cols-2 gap-6">
+                                    {/* Personal Information */}
+                                    <div className="space-y-4">
+                                        <h4 className="font-semibold text-gray-800 border-b pb-2">Personal Information</h4>
+                                        <div className="space-y-3">
+                                            <div>
+                                                <Label htmlFor="firstName">First Name</Label>
+                                                <Input
+                                                    id="firstName"
+                                                    value={editableProfile.firstName}
+                                                    onChange={(e) => setEditableProfile({...editableProfile, firstName: e.target.value})}
+                                                    className="mt-1"
+                                                />
+                                            </div>
+                                            <div>
+                                                <Label htmlFor="lastName">Last Name</Label>
+                                                <Input
+                                                    id="lastName"
+                                                    value={editableProfile.lastName}
+                                                    onChange={(e) => setEditableProfile({...editableProfile, lastName: e.target.value})}
+                                                    className="mt-1"
+                                                />
+                                            </div>
+                                            <div>
+                                                <Label htmlFor="email">Email</Label>
+                                                <Input
+                                                    id="email"
+                                                    type="email"
+                                                    value={editableProfile.email || ''}
+                                                    onChange={(e) => setEditableProfile({...editableProfile, email: e.target.value})}
+                                                    className="mt-1"
+                                                />
+                                            </div>
+                                            <div>
+                                                <Label htmlFor="phone">Phone</Label>
+                                                <Input
+                                                    id="phone"
+                                                    value={editableProfile.phone || ''}
+                                                    onChange={(e) => setEditableProfile({...editableProfile, phone: e.target.value})}
+                                                    className="mt-1"
+                                                />
+                                            </div>
+                                            <div>
+                                                <Label htmlFor="location">Country</Label>
+                                                <Input
+                                                    id="location"
+                                                    value={editableProfile.location || ''}
+                                                    onChange={(e) => setEditableProfile({...editableProfile, location: e.target.value})}
+                                                    placeholder="e.g., Netherlands, United States, Germany"
+                                                    className="mt-1"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    {/* Experience Information */}
+                                    <div className="space-y-4">
+                                        <h4 className="font-semibold text-gray-800 border-b pb-2">Experience</h4>
+                                        <div className="space-y-3">
+                                            <div>
+                                                <Label htmlFor="experienceYears">Years of Experience</Label>
+                                                <Input
+                                                    id="experienceYears"
+                                                    type="number"
+                                                    value={editableProfile.experienceYears}
+                                                    onChange={(e) => setEditableProfile({...editableProfile, experienceYears: parseInt(e.target.value) || 0})}
+                                                    className="mt-1"
+                                                />
+                                            </div>
+                                            <div>
+                                                <Label htmlFor="experienceSummary">Experience Summary</Label>
+                                                <textarea
+                                                    id="experienceSummary"
+                                                    value={editableProfile.experienceSummary}
+                                                    onChange={(e) => setEditableProfile({...editableProfile, experienceSummary: e.target.value})}
+                                                    className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                    rows={4}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
 
                         {/* Main Layout: Profile on Left, Jobs on Right */}
                         <div className="grid lg:grid-cols-3 gap-8">
@@ -906,6 +1125,15 @@ export default function Dashboard() {
                                                 <div className="flex items-center">
                                                     <span className="font-medium text-gray-600 w-20">Phone:</span>
                                                     <span className="text-gray-900 ml-2">{userProfile.phone}</span>
+                                                </div>
+                                            )}
+                                            {userProfile.location && (
+                                                <div className="flex items-center">
+                                                    <span className="font-medium text-gray-600 w-20">Country:</span>
+                                                    <span className="text-gray-900 ml-2 flex items-center">
+                                                        <span className="mr-2">🌍</span>
+                                                        {userProfile.location}
+                                                    </span>
                                                 </div>
                                             )}
                                         </div>

@@ -229,6 +229,7 @@ async def save_cv(request: SaveCVRequest):
             "lastName": parsed_data.get("lastName"),
             "email": parsed_data.get("email"), 
             "phone": parsed_data.get("phone"),
+            "location": parsed_data.get("location"),
             "experienceYears": parsed_data.get("experienceYears"),
             "skills": json.dumps(parsed_data.get("skills", [])),
             "lastThreeJobTitles": json.dumps(parsed_data.get("lastThreeJobTitles", [])),
@@ -317,6 +318,7 @@ async def get_user_profile_with_jobs(user_id: str):
             "lastName": cv_record.get("lastName"),
             "email": cv_record.get("email"),
             "phone": cv_record.get("phone"),
+            "location": cv_record.get("location"),
             "experienceYears": cv_record.get("experienceYears"),
             "skills": skills,
             "lastThreeJobTitles": last_three_job_titles,
@@ -336,7 +338,7 @@ async def get_user_profile_with_jobs(user_id: str):
                 skills=user_profile["skills"],
                 experience=experience_str,
                 last_two_jobs=user_profile["lastThreeJobTitles"][:2],  # Use first two job titles
-                location=None  # No location in simplified profile
+                location=user_profile.get("location")  # Use location from CV if available
             )
         except Exception as job_error:
             print(f"Error getting job recommendations: {job_error}")
@@ -405,6 +407,7 @@ async def update_user_cv(user_id: str, file: UploadFile = File(...)):
             "lastName": parsed_data.get("lastName"),
             "email": parsed_data.get("email"),
             "phone": parsed_data.get("phone"),
+            "location": parsed_data.get("location"),
             "experienceYears": parsed_data.get("experienceYears"),
             "skills": json.dumps(parsed_data.get("skills", [])),
             "lastThreeJobTitles": json.dumps(parsed_data.get("lastThreeJobTitles", [])),
