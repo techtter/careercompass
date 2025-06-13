@@ -1,17 +1,28 @@
 "use client";
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTheme } from '@/contexts/ThemeContext';
 
 export function ThemeToggle() {
   const { theme, toggleTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Don't render anything until mounted to avoid hydration mismatch
+  if (!mounted) {
+    return (
+      <div className="fixed top-4 right-4 z-50 p-3 rounded-full bg-white shadow-lg border border-gray-200 w-11 h-11" />
+    );
+  }
 
   return (
     <button
       onClick={toggleTheme}
       className="fixed top-4 right-4 z-50 p-3 rounded-full bg-white dark:bg-gray-800 shadow-lg border border-gray-200 dark:border-gray-700 hover:shadow-xl transition-all duration-300 hover:scale-105"
       aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
-      suppressHydrationWarning
     >
       {theme === 'light' ? (
         // Moon icon for dark mode
