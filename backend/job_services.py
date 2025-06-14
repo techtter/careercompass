@@ -700,6 +700,11 @@ async def get_real_job_recommendations(
             print("📡 Trying JobAggregator (JSearch + Adzuna APIs)...")
             # Extract country for better API targeting
             user_country = _extract_country_from_location(location) if location else ""
+            print(f"🌍 Detected Country: {user_country}")
+            
+            # Special handling for Netherlands
+            if user_country and user_country.lower() == 'netherlands':
+                print("🇳🇱 Netherlands location detected - Dutch job boards will be included in search!")
             
             # Create search queries based on user profile
             search_queries = []
