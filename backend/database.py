@@ -11,9 +11,9 @@ key = os.getenv("SUPABASE_ANON_KEY")
 database_available = False
 supabase = None
 
-# In-memory storage for development mode
+# In-memory storage for development mode - NO MOCK DATA
 MEMORY_STORE = {
-    "cv_records": {},
+    "cv_records": {},  # Empty - no mock users
     "career_paths": {},
     "skill_gaps": {},
     "resume_optimizations": {}

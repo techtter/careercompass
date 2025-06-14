@@ -12,12 +12,21 @@ import json
 from dotenv import load_dotenv
 from database import (
     CVRecordService, CareerPathService, SkillGapService, 
-    ResumeOptimizationService, LearningProgressService, database_available
+    ResumeOptimizationService, LearningProgressService as LearningGoalService, database_available
 )
 import base64
 
-# Load environment variables from .env file
-load_dotenv()
+# Import job services for job recommendations
+try:
+    from job_services import get_personalized_job_recommendations
+    job_services_available = True
+except ImportError as e:
+    print(f"⚠️  Job services not available: {e}")
+    job_services_available = False
+
+# Load environment variables from .env file (preferred) or config.env as fallback
+load_dotenv('.env')  # Try .env first
+load_dotenv('config.env')  # Fallback to config.env
 
 # Initialize Clerk if available
 try:
@@ -27,30 +36,75 @@ except ImportError:
     print("⚠️  Clerk not available, authentication disabled for development")
     clerk_available = False
 
+# Database services are already imported at the top, check if they're working
+print(f"📦 Database available: {database_available}")
+if database_available:
+    print("✅ Using real database services with in-memory fallback")
+else:
+    print("⚠️  Database not configured, using in-memory storage only")
+
 # Mock services for when database is not available  
-if not database_available:
-    print("📦 Using mock database services for development")
+if False:  # Disable empty services - always use real services
+    print("📦 Using empty database services - no mock data")
     
-    class MockService:
+    class EmptyService:
         @staticmethod
         def create_cv_record(*args, **kwargs):
-            return {"id": 1, "user_id": "mock_user"}
+            return None
         
         @staticmethod
-        def get_cv_record_by_user(*args, **kwargs):
-            return None  # Will trigger new user flow
+        def get_cv_record_by_user(user_id):
+            # Return None - no mock data
+            print(f"🔍 DEBUG: EmptyService.get_cv_record_by_user called with user_id: {user_id}")
+            print(f"🔍 DEBUG: No CV record found - user needs to upload CV")
+            return None
+        
+        @staticmethod
+        def get_cv_record_by_id(cv_id):
+            return None
+        
+        @staticmethod
+        def update_cv_record(user_id, update_data):
+            return None
         
         @staticmethod
         def create_career_path(*args, **kwargs):
-            return {"id": 1}
+            return None
         
         @staticmethod
         def create_skill_gap(*args, **kwargs):
-            return {"id": 1}
+            return None
         
         @staticmethod
         def create_resume_optimization(*args, **kwargs):
-            return {"id": 1}
+            return None
+        
+        @staticmethod
+        def create_learning_goal(*args, **kwargs):
+            return None
+        
+        @staticmethod
+        def get_career_paths_by_user(user_id):
+            return []
+        
+        @staticmethod
+        def get_skill_gaps_by_user(user_id):
+            return []
+        
+        @staticmethod
+        def get_resume_optimizations_by_user(user_id):
+            return []
+        
+        @staticmethod
+        def get_learning_goals_by_user(user_id):
+            return []
+    
+    # Use empty services - no mock data
+    CVRecordService = EmptyService
+    CareerPathService = EmptyService
+    SkillGapService = EmptyService
+    ResumeOptimizationService = EmptyService
+    LearningGoalService = EmptyService
 
 app = FastAPI(
     title="CareerCompassAI API",
@@ -131,6 +185,21 @@ class LearningProgressUpdateRequest(BaseModel):
     progress_percentage: int  # 0-100
     status: str  # not_started, in_progress, completed, paused
     notes: Optional[str] = None
+
+class UserProfileUpdateRequest(BaseModel):
+    firstName: Optional[str] = None
+    lastName: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    location: Optional[str] = None
+    experienceYears: Optional[int] = None
+    skills: Optional[List[str]] = None
+    lastThreeJobTitles: Optional[List[str]] = None
+    experienceSummary: Optional[str] = None
+    companies: Optional[List[str]] = None
+    education: Optional[List[str]] = None
+    certifications: Optional[List[str]] = None
+    raw_text: Optional[str] = None  # For saving the actual CV content
 
 async def extract_text_from_file(file: UploadFile) -> str:
     """Extract text from uploaded file based on file type - optimized for Claude AI parsing"""
@@ -360,6 +429,80 @@ async def get_user_profile_with_jobs(user_id: str):
         print(f"Error getting user profile: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.put("/api/user-profile/{user_id}")
+async def update_user_profile(user_id: str, request: UserProfileUpdateRequest):
+    """Update comprehensive user profile information including all CV details"""
+    try:
+        # Check if user exists
+        existing_cv = CVRecordService.get_cv_record_by_user(user_id)
+        if not existing_cv:
+            raise HTTPException(status_code=404, detail="User profile not found")
+        
+        # Prepare update data - only include fields that are provided
+        update_data = {}
+        
+        # Basic profile fields
+        if request.firstName is not None:
+            update_data["firstName"] = request.firstName
+        if request.lastName is not None:
+            update_data["lastName"] = request.lastName
+        if request.email is not None:
+            update_data["email"] = request.email
+        if request.phone is not None:
+            update_data["phone"] = request.phone
+        if request.location is not None:
+            update_data["location"] = request.location
+        if request.experienceYears is not None:
+            update_data["experienceYears"] = request.experienceYears
+        if request.experienceSummary is not None:
+            update_data["experienceSummary"] = request.experienceSummary
+        
+        # Array fields - convert to JSON strings for database storage
+        if request.skills is not None:
+            update_data["skills"] = json.dumps(request.skills)
+        if request.lastThreeJobTitles is not None:
+            update_data["lastThreeJobTitles"] = json.dumps(request.lastThreeJobTitles)
+        if request.companies is not None:
+            update_data["companies"] = json.dumps(request.companies)
+        if request.education is not None:
+            update_data["education"] = json.dumps(request.education)
+        if request.certifications is not None:
+            update_data["certifications"] = json.dumps(request.certifications)
+        
+        # CV content
+        if request.raw_text is not None:
+            update_data["raw_text"] = request.raw_text
+        
+        # Update the CV record with new profile information
+        updated_cv = CVRecordService.update_cv_record(user_id, update_data)
+        
+        if not updated_cv:
+            raise HTTPException(status_code=500, detail="Failed to update user profile")
+        
+        return {
+            "success": True,
+            "message": "Complete profile saved successfully! All details have been updated in the database.",
+            "updated_fields": list(update_data.keys()),
+            "profile_data": {
+                "firstName": request.firstName,
+                "lastName": request.lastName,
+                "email": request.email,
+                "phone": request.phone,
+                "location": request.location,
+                "experienceYears": request.experienceYears,
+                "skills": request.skills,
+                "lastThreeJobTitles": request.lastThreeJobTitles,
+                "experienceSummary": request.experienceSummary,
+                "companies": request.companies,
+                "education": request.education,
+                "certifications": request.certifications
+            }
+        }
+        
+    except Exception as e:
+        print(f"Error updating user profile: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.put("/api/update-cv/{user_id}")
 async def update_user_cv(user_id: str, file: UploadFile = File(...)):
     """Update user's existing CV with a new file"""
@@ -564,25 +707,169 @@ async def get_user_resume_optimizations(user_id: str):
 @app.post("/api/job-recommendations")
 async def get_job_recommendations(request: JobRecommendationRequest):
     try:
-        from job_services import get_personalized_job_recommendations
-        
-        # Get job recommendations using AI and multiple job APIs
+        if not job_services_available:
+            print("❌ Job services not available - returning empty results")
+            return {
+                "success": True,
+                "jobs": [],
+                "total": 0,
+                "message": "Job services not available. Please configure API keys to enable real job search."
+            }
+
+        # Get REAL job recommendations using multiple job APIs - NO MOCK DATA
         job_recommendations = await get_personalized_job_recommendations(
             skills=request.skills,
             experience=request.experience,
             last_two_jobs=request.lastTwoJobs,
             location=request.location
         )
-        
-        return {
-            "success": True,
-            "jobs": job_recommendations,
-            "total": len(job_recommendations),
-            "message": f"Found {len(job_recommendations)} job recommendations"
-        }
+
+        if job_recommendations:
+            return {
+                "success": True,
+                "jobs": job_recommendations,
+                "total": len(job_recommendations),
+                "message": f"Found {len(job_recommendations)} real job recommendations"
+            }
+        else:
+            return {
+                "success": True,
+                "jobs": [],
+                "total": 0,
+                "message": "No real jobs found for your profile. Please try different search criteria or configure additional API keys."
+            }
     except Exception as e:
         print(f"Error getting job recommendations: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return {
+            "success": True,
+            "jobs": [],
+            "total": 0,
+            "message": f"Error fetching jobs: {str(e)}"
+        }
+
+@app.get("/api/job-recommendations/{user_id}")
+async def get_user_job_recommendations(user_id: str):
+    """Get personalized job recommendations based on user's saved profile data from database"""
+    try:
+        print(f"🔍 DEBUG: Starting job recommendations for user {user_id}")
+        
+        # Get user's CV record from database
+        print(f"🔍 DEBUG: Calling CVRecordService.get_cv_record_by_user({user_id})")
+        cv_record = CVRecordService.get_cv_record_by_user(user_id)
+        print(f"🔍 DEBUG: CV record result: {cv_record}")
+        
+        if not cv_record:
+            print(f"🔍 DEBUG: No CV record found for user {user_id}")
+            return {
+                "success": False,
+                "jobs": [],
+                "total": 0,
+                "message": "User profile not found. Please upload your CV first to get personalized job recommendations.",
+                "user_location": None,
+                "user_country": None,
+                "profile_source": "none",
+                "error": "no_profile"
+            }
+        
+        print(f"🔍 DEBUG: Processing CV record data...")
+        
+        # Parse JSON fields if they are strings (for real database data)
+        skills = cv_record.get("skills", [])
+        if isinstance(skills, str):
+            try:
+                skills = json.loads(skills)
+            except:
+                skills = []
+        
+        last_three_job_titles = cv_record.get("lastThreeJobTitles", [])
+        if isinstance(last_three_job_titles, str):
+            try:
+                last_three_job_titles = json.loads(last_three_job_titles)
+            except:
+                last_three_job_titles = []
+        
+        # Extract user profile data from database
+        experience_years = cv_record.get("experienceYears", 0)
+        experience_str = f"{experience_years} years" if experience_years else "Entry level"
+        location = cv_record.get("location")  # This is the key - use saved location from database
+        
+        print(f"🔍 Generating job recommendations from DATABASE profile for user {user_id}:")
+        print(f"   Skills: {skills}")
+        print(f"   Experience: {experience_str}")
+        print(f"   Last jobs: {last_three_job_titles[:2]}")
+        print(f"   Location: {location}")
+        print(f"   Detected Country: {location}")
+        
+        print(f"🔍 DEBUG: Fetching REAL jobs for user profile...")
+        
+        # Get REAL job recommendations based on user's saved profile - NO MOCK DATA
+        if not job_services_available:
+            print("❌ Job services not available - returning empty results")
+            return {
+                "success": True,
+                "jobs": [],
+                "total": 0,
+                "message": "Job services not available. Please configure API keys to enable real job search.",
+                "user_location": location,
+                "user_country": location,
+                "profile_source": "database"
+            }
+        
+        try:
+            real_jobs = await get_personalized_job_recommendations(
+                skills=skills,
+                experience=experience_str,
+                last_two_jobs=last_three_job_titles[:2],
+                location=location
+            )
+            
+            if real_jobs:
+                print(f"✅ Found {len(real_jobs)} real jobs for user profile")
+                return {
+                    "success": True,
+                    "jobs": real_jobs,
+                    "total": len(real_jobs),
+                    "message": f"Found {len(real_jobs)} real job recommendations from saved profile",
+                    "user_location": location,
+                    "user_country": location,
+                    "profile_source": "database"
+                }
+            else:
+                print("❌ No real jobs found for user profile")
+                return {
+                    "success": True,
+                    "jobs": [],
+                    "total": 0,
+                    "message": "No real jobs found for your profile. Please try updating your skills or location, or configure additional API keys.",
+                    "user_location": location,
+                    "user_country": location,
+                    "profile_source": "database"
+                }
+        except Exception as e:
+            print(f"❌ Error fetching real jobs for user profile: {e}")
+            return {
+                "success": True,
+                "jobs": [],
+                "total": 0,
+                "message": f"Error fetching jobs for your profile: {str(e)}",
+                "user_location": location,
+                "user_country": location,
+                "profile_source": "database"
+            }
+        
+    except Exception as e:
+        print(f"🔍 DEBUG: General Exception: {e}")
+        print(f"Error getting user job recommendations: {e}")
+        return {
+            "success": False,
+            "jobs": [],
+            "total": 0,
+            "message": f"Error retrieving job recommendations: {str(e)}",
+            "user_location": None,
+            "user_country": None,
+            "profile_source": "error",
+            "error": "server_error"
+        }
 
 @app.post("/api/learning-goals")
 async def create_learning_goal(request: LearningGoalRequest):

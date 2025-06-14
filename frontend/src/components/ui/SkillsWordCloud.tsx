@@ -52,15 +52,30 @@ const SkillsWordCloud: React.FC<SkillsWordCloudProps> = ({ skills, className = "
   useEffect(() => {
     if (skills.length === 0) return;
 
+    // Clean and split skills that might still contain delimiters
+    const cleanedSkills: string[] = [];
+    skills.forEach(skill => {
+      if (skill.includes(',') || skill.includes('/') || skill.includes('|')) {
+        // Split by delimiters and add individual skills
+        const splitSkills = skill.split(/[,\/\|]/).map(s => s.trim()).filter(s => s.length > 0);
+        cleanedSkills.push(...splitSkills);
+      } else {
+        cleanedSkills.push(skill.trim());
+      }
+    });
+
+    // Remove duplicates and empty skills
+    const uniqueSkills = [...new Set(cleanedSkills)].filter(skill => skill.length > 0);
+
     // Generate random positions and properties for each skill
-    const items: SkillItem[] = skills.map((skill, index) => {
+    const items: SkillItem[] = uniqueSkills.map((skill, index) => {
       // Size based on skill length and importance (shorter skills get bigger)
       const baseSize = Math.max(14, 24 - skill.length * 0.8);
       const size = baseSize + Math.random() * 6;
       
       // Ensure skills don't overlap too much by using a grid-like approach
-      const gridCols = Math.ceil(Math.sqrt(skills.length));
-      const gridRows = Math.ceil(skills.length / gridCols);
+      const gridCols = Math.ceil(Math.sqrt(uniqueSkills.length));
+      const gridRows = Math.ceil(uniqueSkills.length / gridCols);
       const gridX = (index % gridCols) / gridCols;
       const gridY = Math.floor(index / gridCols) / gridRows;
       
@@ -251,7 +266,7 @@ const SkillsWordCloud: React.FC<SkillsWordCloudProps> = ({ skills, className = "
 
       {/* Skill count indicator */}
       <div className="absolute top-4 right-4 bg-white bg-opacity-80 backdrop-blur-sm rounded-full px-3 py-1 text-sm font-medium text-gray-700 border border-gray-300">
-        {skills.length} Skills
+        {skillItems.length} Skills
       </div>
 
       {/* Interactive hint */}

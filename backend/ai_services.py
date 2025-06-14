@@ -331,12 +331,21 @@ def _validate_and_clean_parsed_data(data, resume_text: str = ""):
     Validates and cleans the AI-parsed data to ensure it matches our expected structure.
     Uses enhanced pattern matching for missing data instead of generic placeholders.
     """
+    # Get location and handle empty strings properly
+    location_value = data.get("location")
+    if location_value:
+        location_value = str(location_value).strip()
+        if not location_value:  # Empty string after stripping
+            location_value = None
+    else:
+        location_value = None
+    
     cleaned = {
         "firstName": str(data.get("firstName", "Professional")).strip() if data.get("firstName") else "Professional",
         "lastName": str(data.get("lastName", "User")).strip() if data.get("lastName") else "User",
         "email": str(data.get("email")).strip() if data.get("email") else None,
         "phone": str(data.get("phone")).strip() if data.get("phone") else None,
-        "location": str(data.get("location")).strip() if data.get("location") else None,
+        "location": location_value,
         "experienceYears": int(data.get("experienceYears", 2)) if data.get("experienceYears") else 2,
         "skills": [],
         "lastThreeJobTitles": [],
@@ -349,66 +358,75 @@ def _validate_and_clean_parsed_data(data, resume_text: str = ""):
     # Clean skills array
     if isinstance(data.get("skills"), list):
         for skill in data.get("skills", []):
-            if isinstance(skill, str) and skill.strip():
+            if skill and isinstance(skill, str) and len(skill.strip()) > 1:
                 cleaned["skills"].append(skill.strip())
-    if not cleaned["skills"]:
-        cleaned["skills"] = ["Python", "Data Analysis", "Problem Solving", "Communication", "Project Management"]
     
-    # Clean job titles array - use realistic defaults instead of generic ones
+    # Clean job titles array
     if isinstance(data.get("lastThreeJobTitles"), list):
         for title in data.get("lastThreeJobTitles", []):
-            if isinstance(title, str) and title.strip():
+            if title and isinstance(title, str) and len(title.strip()) > 2:
                 cleaned["lastThreeJobTitles"].append(title.strip())
-    if not cleaned["lastThreeJobTitles"]:
-        # Use skill-based job title inference instead of generic placeholder
-        skills_lower = [skill.lower() for skill in cleaned["skills"]]
-        if any(skill in skills_lower for skill in ['data engineer', 'spark', 'kafka', 'etl', 'data pipeline']):
-            cleaned["lastThreeJobTitles"] = ["Senior Data Engineer", "Data Engineer"]
-        elif any(skill in skills_lower for skill in ['software engineer', 'python', 'java', 'programming']):
-            cleaned["lastThreeJobTitles"] = ["Senior Software Engineer", "Software Engineer"]
-        elif any(skill in skills_lower for skill in ['data scientist', 'machine learning', 'ml', 'ai']):
-            cleaned["lastThreeJobTitles"] = ["Senior Data Scientist", "Data Scientist"]
-        elif any(skill in skills_lower for skill in ['cloud', 'aws', 'azure', 'devops']):
-            cleaned["lastThreeJobTitles"] = ["Cloud Engineer", "DevOps Engineer"]
-        else:
-            cleaned["lastThreeJobTitles"] = ["Senior Software Engineer", "Software Engineer"]
     
-    # Clean companies array - use realistic defaults
+    # Clean companies array
     if isinstance(data.get("companies"), list):
         for company in data.get("companies", []):
-            if isinstance(company, str) and company.strip():
+            if company and isinstance(company, str) and len(company.strip()) > 2:
                 cleaned["companies"].append(company.strip())
     
-    # Enhanced company extraction from resume text if no companies found
-    if not cleaned["companies"] and resume_text:
-        print("🏢 No companies found in parsed data, attempting enhanced extraction...")
-        extracted_companies = _extract_companies_from_text(resume_text)
-        if extracted_companies:
-            cleaned["companies"] = extracted_companies
-            print(f"🏢 Extracted companies: {extracted_companies}")
-        else:
-            # Only use generic placeholders as last resort
-            cleaned["companies"] = ["Previous Company"]
-            print("🏢 No companies could be extracted, using minimal placeholder")
-    else:
-        print(f"🏢 Companies from parsed data: {cleaned['companies']}")
-    
-    # Clean education array - use realistic defaults
+    # Clean education array
     if isinstance(data.get("education"), list):
         for edu in data.get("education", []):
-            if isinstance(edu, str) and edu.strip():
+            if edu and isinstance(edu, str) and len(edu.strip()) > 2:
                 cleaned["education"].append(edu.strip())
-    if not cleaned["education"]:
-        cleaned["education"] = ["Bachelor of Science in Computer Science", "Master of Science in Data Science"]
     
-    # Clean certifications array - use realistic defaults
+    # Clean certifications array
     if isinstance(data.get("certifications"), list):
         for cert in data.get("certifications", []):
-            if isinstance(cert, str) and cert.strip():
+            if cert and isinstance(cert, str) and len(cert.strip()) > 2:
                 cleaned["certifications"].append(cert.strip())
-    if not cleaned["certifications"]:
-        # Infer certifications based on skills
-        skills_lower = [skill.lower() for skill in cleaned["skills"]]
+    
+    # If we don't have enough skills, extract from resume text
+    if len(cleaned["skills"]) < 3 and resume_text:
+        print("🔍 Extracting additional skills from resume text...")
+        extracted_skills = _extract_skills_from_sections(resume_text)
+        for skill in extracted_skills:
+            if skill not in cleaned["skills"]:
+                cleaned["skills"].append(skill)
+    
+    # If we don't have enough job titles, extract from resume text
+    if len(cleaned["lastThreeJobTitles"]) < 2 and resume_text:
+        print("🔍 Extracting additional job titles from resume text...")
+        # Use pattern matching to find job titles
+        job_title_patterns = [
+            r'(?:Senior|Lead|Principal|Staff)?\s*(?:Software|Data|DevOps|Full[- ]?Stack|Backend|Frontend|Mobile|Web)?\s*(?:Engineer|Developer|Architect|Scientist|Analyst|Manager|Director|Consultant|Specialist)',
+            r'(?:Project|Product|Engineering|Technical|Development)\s*(?:Manager|Director|Lead)',
+            r'(?:Chief|Head|VP|Vice President)\s*(?:Technology|Engineering|Data|Product)',
+        ]
+        
+        for pattern in job_title_patterns:
+            matches = re.findall(pattern, resume_text, re.IGNORECASE)
+            for match in matches:
+                title = match.strip()
+                if title and len(title) > 5 and title not in cleaned["lastThreeJobTitles"]:
+                    cleaned["lastThreeJobTitles"].append(title)
+                    if len(cleaned["lastThreeJobTitles"]) >= 3:
+                        break
+            if len(cleaned["lastThreeJobTitles"]) >= 3:
+                break
+    
+    # If we don't have enough companies, extract from resume text
+    if len(cleaned["companies"]) < 2 and resume_text:
+        print("🔍 Extracting additional companies from resume text...")
+        extracted_companies = _extract_companies_from_text(resume_text)
+        for company in extracted_companies:
+            if company not in cleaned["companies"]:
+                cleaned["companies"].append(company)
+                if len(cleaned["companies"]) >= 5:
+                    break
+    
+    # Ensure minimum data quality
+    if not cleaned["skills"]:
+        skills_lower = resume_text.lower() if resume_text else ""
         certs = []
         if any(skill in skills_lower for skill in ['aws', 'amazon web services']):
             certs.append("AWS Certified Solutions Architect")
@@ -420,7 +438,7 @@ def _validate_and_clean_parsed_data(data, resume_text: str = ""):
             certs = ["Professional Development Certification"]
         cleaned["certifications"] = certs
     
-    # Extract location/country if not provided by AI
+    # Extract location/country if not provided by AI - FIXED LOGIC
     if not cleaned["location"] and resume_text:
         # Try to extract country from work history
         print(f"🔍 Attempting location detection from resume text...")
@@ -432,6 +450,8 @@ def _validate_and_clean_parsed_data(data, resume_text: str = ""):
             print(f"🌍 Detected Country: {detected_country}")
         else:
             print(f"🌍 Detected Country: None")
+    elif cleaned["location"]:
+        print(f"🌍 Location already provided: {cleaned['location']}")
     
     return cleaned
 
@@ -684,145 +704,135 @@ def _extract_country_from_work_history(resume_text: str, companies: list, job_ti
     """
     Extract country information from work history, companies, and job locations.
     Prioritizes recent work experience and company locations.
+    Enhanced for better Netherlands and European country detection.
     """
     import re
     print(f"🔍 Location extraction - Resume text length: {len(resume_text)}")
     print(f"🔍 Location extraction - Companies: {companies}")
     print(f"🔍 Location extraction - Job titles: {job_titles}")
-    # Country mapping for common company locations and patterns
+    
+    # Enhanced country mapping for common company locations and patterns
     country_indicators = {
-        'usa': 'United States', 'us': 'United States', 'america': 'United States', 'united states': 'United States',
-        'uk': 'United Kingdom', 'britain': 'United Kingdom', 'england': 'United Kingdom', 'united kingdom': 'United Kingdom',
-        'canada': 'Canada', 'germany': 'Germany', 'france': 'France', 'spain': 'Spain',
-        'italy': 'Italy', 'netherlands': 'Netherlands', 'belgium': 'Belgium',
-        'switzerland': 'Switzerland', 'austria': 'Austria', 'sweden': 'Sweden',
-        'norway': 'Norway', 'denmark': 'Denmark', 'finland': 'Finland',
-        'india': 'India', 'china': 'China', 'japan': 'Japan', 'singapore': 'Singapore',
-        'australia': 'Australia', 'brazil': 'Brazil', 'mexico': 'Mexico',
-        'ireland': 'Ireland', 'poland': 'Poland', 'czech republic': 'Czech Republic',
-        'hungary': 'Hungary', 'romania': 'Romania', 'bulgaria': 'Bulgaria',
-        'greece': 'Greece', 'portugal': 'Portugal', 'turkey': 'Turkey',
-        'israel': 'Israel', 'south africa': 'South Africa', 'egypt': 'Egypt',
-        'uae': 'United Arab Emirates', 'saudi arabia': 'Saudi Arabia',
-        'russia': 'Russia', 'ukraine': 'Ukraine', 'belarus': 'Belarus',
-        'lithuania': 'Lithuania', 'latvia': 'Latvia', 'estonia': 'Estonia'
-    }
-    
-    # Common company suffixes by country
-    company_country_patterns = {
-        r'\b\w+\s+(?:Inc|Corp|LLC|Corporation)\b': 'United States',
-        r'\b\w+\s+(?:Ltd|Limited|PLC)\b': 'United Kingdom',
-        r'\b\w+\s+(?:GmbH|AG)\b': 'Germany',
-        r'\b\w+\s+(?:SA|SAS)\b': 'France',
-        r'\b\w+\s+(?:BV|NV)\b': 'Netherlands',
-        r'\b\w+\s+(?:AB|Aktiebolag)\b': 'Sweden',
-        r'\b\w+\s+(?:AS|ASA)\b': 'Norway',
-        r'\b\w+\s+(?:Oy|Oyj)\b': 'Finland',
-        r'\b\w+\s+(?:ApS|A/S)\b': 'Denmark',
-        r'\b\w+\s+(?:Pvt Ltd|Private Limited)\b': 'India',
-        r'\b\w+\s+(?:Pty Ltd)\b': 'Australia',
-        r'\b\w+\s+(?:Srl|SpA)\b': 'Italy',
-        r'\b\w+\s+(?:SL|SLU)\b': 'Spain'
-    }
-    
-    # City to country mapping for major tech hubs
-    city_country_mapping = {
-        'san francisco': 'United States', 'new york': 'United States', 'seattle': 'United States',
-        'boston': 'United States', 'austin': 'United States', 'chicago': 'United States',
-        'los angeles': 'United States', 'denver': 'United States', 'atlanta': 'United States',
-        'london': 'United Kingdom', 'manchester': 'United Kingdom', 'edinburgh': 'United Kingdom',
-        'berlin': 'Germany', 'munich': 'Germany', 'hamburg': 'Germany', 'frankfurt': 'Germany',
-        'paris': 'France', 'lyon': 'France', 'toulouse': 'France',
-        'amsterdam': 'Netherlands', 'rotterdam': 'Netherlands', 'utrecht': 'Netherlands', 'the hague': 'Netherlands', 'eindhoven': 'Netherlands',
-        'stockholm': 'Sweden', 'gothenburg': 'Sweden',
-        'oslo': 'Norway', 'bergen': 'Norway',
-        'copenhagen': 'Denmark', 'aarhus': 'Denmark',
-        'helsinki': 'Finland', 'tampere': 'Finland',
-        'zurich': 'Switzerland', 'geneva': 'Switzerland',
-        'vienna': 'Austria', 'salzburg': 'Austria',
-        'dublin': 'Ireland', 'cork': 'Ireland',
-        'madrid': 'Spain', 'barcelona': 'Spain',
-        'rome': 'Italy', 'milan': 'Italy',
-        'bangalore': 'India', 'mumbai': 'India', 'delhi': 'India', 'hyderabad': 'India',
-        'pune': 'India', 'chennai': 'India', 'kolkata': 'India',
-        'beijing': 'China', 'shanghai': 'China', 'shenzhen': 'China', 'hangzhou': 'China',
-        'tokyo': 'Japan', 'osaka': 'Japan', 'kyoto': 'Japan',
+        # Netherlands variations
+        'netherlands': 'Netherlands', 'holland': 'Netherlands', 'nl': 'Netherlands', 
+        'nederland': 'Netherlands', 'dutch': 'Netherlands',
+        'amsterdam': 'Netherlands', 'rotterdam': 'Netherlands', 'the hague': 'Netherlands',
+        'utrecht': 'Netherlands', 'eindhoven': 'Netherlands', 'groningen': 'Netherlands',
+        'tilburg': 'Netherlands', 'almere': 'Netherlands', 'breda': 'Netherlands',
+        
+        # Germany variations
+        'germany': 'Germany', 'deutschland': 'Germany', 'german': 'Germany', 'de': 'Germany',
+        'berlin': 'Germany', 'munich': 'Germany', 'hamburg': 'Germany', 'cologne': 'Germany',
+        'frankfurt': 'Germany', 'stuttgart': 'Germany', 'düsseldorf': 'Germany',
+        
+        # United Kingdom variations
+        'uk': 'United Kingdom', 'united kingdom': 'United Kingdom', 'britain': 'United Kingdom',
+        'england': 'United Kingdom', 'scotland': 'United Kingdom', 'wales': 'United Kingdom',
+        'london': 'United Kingdom', 'manchester': 'United Kingdom', 'birmingham': 'United Kingdom',
+        'glasgow': 'United Kingdom', 'liverpool': 'United Kingdom', 'edinburgh': 'United Kingdom',
+        
+        # United States variations
+        'usa': 'United States', 'us': 'United States', 'united states': 'United States',
+        'america': 'United States', 'new york': 'United States', 'california': 'United States',
+        'texas': 'United States', 'florida': 'United States', 'washington': 'United States',
+        
+        # France variations
+        'france': 'France', 'french': 'France', 'fr': 'France',
+        'paris': 'France', 'lyon': 'France', 'marseille': 'France', 'toulouse': 'France',
+        
+        # Other European countries
+        'belgium': 'Belgium', 'brussels': 'Belgium', 'antwerp': 'Belgium',
+        'switzerland': 'Switzerland', 'zurich': 'Switzerland', 'geneva': 'Switzerland',
+        'austria': 'Austria', 'vienna': 'Austria',
+        'sweden': 'Sweden', 'stockholm': 'Sweden', 'gothenburg': 'Sweden',
+        'norway': 'Norway', 'oslo': 'Norway',
+        'denmark': 'Denmark', 'copenhagen': 'Denmark',
+        'finland': 'Finland', 'helsinki': 'Finland',
+        'italy': 'Italy', 'rome': 'Italy', 'milan': 'Italy',
+        'spain': 'Spain', 'madrid': 'Spain', 'barcelona': 'Spain',
+        'portugal': 'Portugal', 'lisbon': 'Portugal',
+        
+        # Other countries
+        'canada': 'Canada', 'toronto': 'Canada', 'vancouver': 'Canada', 'montreal': 'Canada',
+        'australia': 'Australia', 'sydney': 'Australia', 'melbourne': 'Australia',
+        'india': 'India', 'bangalore': 'India', 'mumbai': 'India', 'delhi': 'India',
         'singapore': 'Singapore',
-        'sydney': 'Australia', 'melbourne': 'Australia', 'brisbane': 'Australia',
-        'toronto': 'Canada', 'vancouver': 'Canada', 'montreal': 'Canada',
-        'tel aviv': 'Israel', 'jerusalem': 'Israel'
+        'japan': 'Japan', 'tokyo': 'Japan',
+        'china': 'China', 'beijing': 'China', 'shanghai': 'China'
     }
     
-    resume_lower = resume_text.lower()
-    
-    # 1. Check for explicit country mentions in the resume (with word boundaries)
-    for country_key, country_name in country_indicators.items():
-        # Use word boundaries to avoid matching partial words like "us" in "using"
-        pattern = r'\b' + re.escape(country_key) + r'\b'
-        if re.search(pattern, resume_lower):
-            print(f"🌍 Found country indicator: '{country_key}' -> {country_name}")
-            return country_name
-    
-    # 2. Check company suffixes to infer country
-    for company in companies[:3]:  # Check first 3 companies (most recent)
-        for pattern, country in company_country_patterns.items():
-            if re.search(pattern, company, re.IGNORECASE):
-                return country
-    
-    # 3. Check for city mentions that can indicate country
-    for city, country in city_country_mapping.items():
-        if city in resume_lower:
-            print(f"🏙️ Found city '{city}' in resume, mapping to country: {country}")
-            return country
-    
-    # 4. Look for location patterns in job descriptions or company descriptions
-    lines = resume_text.split('\n')
-    for line in lines:
-        line_lower = line.lower()
-        # Look for patterns like "Company Name, Location" or "Job Title - Location"
-        if any(company.lower() in line_lower for company in companies[:3]):
-            # Check if this line contains location information
-            for city, country in city_country_mapping.items():
-                if city in line_lower:
-                    return country
-            
-            # Check for country indicators in the same line as company
-            for country_key, country_name in country_indicators.items():
-                if country_key in line_lower:
-                    return country_name
-    
-    # 5. Look for remote work indicators with location
-    remote_patterns = [
-        r'remote.*?(?:from|in|based)\s+([a-zA-Z\s]+)',
-        r'(?:based|located|working)\s+(?:in|from)\s+([a-zA-Z\s]+)',
-        r'(?:office|headquarters|hq)\s+(?:in|at)\s+([a-zA-Z\s]+)'
+    # Enhanced patterns for location detection
+    location_patterns = [
+        # Email domains (company.nl, company.de, etc.)
+        r'@[a-zA-Z0-9.-]+\.([a-z]{2,3})\b',
+        # Phone numbers with country codes
+        r'\+(\d{1,3})\s*[\d\s\-\(\)]+',
+        # Address patterns (City, Country)
+        r'([A-Z][a-zA-Z\s]+),\s*([A-Z][a-zA-Z\s]+)',
+        # Location after "in" or "at" (in Amsterdam, at Berlin office)
+        r'(?:in|at|from|based in)\s+([A-Z][a-zA-Z\s]+)',
+        # Company locations (Company Name, Location)
+        r'([A-Z][a-zA-Z\s&]+(?:Inc|Corp|Corporation|LLC|Ltd|Limited|Company|Co|Technologies|Tech|Solutions|Systems|Services|Group)\.?),\s*([A-Z][a-zA-Z\s]+)',
     ]
     
-    for pattern in remote_patterns:
-        matches = re.findall(pattern, resume_lower)
-        for match in matches:
-            location_text = match.strip()
-            # Check if this location matches any of our known cities or countries
-            for city, country in city_country_mapping.items():
-                if city in location_text:
-                    return country
-            for country_key, country_name in country_indicators.items():
-                if country_key in location_text:
-                    return country_name
+    detected_countries = []
     
-    # 6. Default inference based on common patterns
-    # If we find US-style patterns (ZIP codes, state abbreviations), assume US
-    if re.search(r'\b\d{5}(-\d{4})?\b', resume_text):  # US ZIP codes
-        return 'United States'
+    # Check email domains for country codes
+    email_matches = re.findall(r'@[a-zA-Z0-9.-]+\.([a-z]{2,3})\b', resume_text.lower())
+    for domain in email_matches:
+        if domain in country_indicators:
+            country = country_indicators[domain]
+            detected_countries.append(country)
+            print(f"📧 Found country from email domain .{domain}: {country}")
     
-    if re.search(r'\b[A-Z]{2}\s+\d{5}\b', resume_text):  # State + ZIP
-        return 'United States'
+    # Check phone numbers for country codes
+    phone_matches = re.findall(r'\+(\d{1,3})\s*[\d\s\-\(\)]+', resume_text)
+    country_codes = {
+        '31': 'Netherlands', '49': 'Germany', '44': 'United Kingdom', 
+        '1': 'United States', '33': 'France', '32': 'Belgium',
+        '41': 'Switzerland', '43': 'Austria', '46': 'Sweden',
+        '47': 'Norway', '45': 'Denmark', '358': 'Finland'
+    }
+    for code in phone_matches:
+        if code in country_codes:
+            country = country_codes[code]
+            detected_countries.append(country)
+            print(f"📞 Found country from phone code +{code}: {country}")
     
-    # If we find UK-style postcodes
-    if re.search(r'\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b', resume_text):
-        return 'United Kingdom'
+    # Check for explicit location mentions in text
+    resume_lower = resume_text.lower()
+    for indicator, country in country_indicators.items():
+        # Use word boundaries to avoid partial matches
+        pattern = r'\b' + re.escape(indicator) + r'\b'
+        if re.search(pattern, resume_lower):
+            detected_countries.append(country)
+            print(f"📍 Found country from text '{indicator}': {country}")
     
-    # If no location found, return empty string
+    # Check companies for location indicators
+    for company in companies:
+        company_lower = company.lower()
+        for indicator, country in country_indicators.items():
+            if indicator in company_lower:
+                detected_countries.append(country)
+                print(f"🏢 Found country from company '{company}' -> '{indicator}': {country}")
+    
+    # Check job titles for location indicators (sometimes location is in job title)
+    for job_title in job_titles:
+        job_lower = job_title.lower()
+        for indicator, country in country_indicators.items():
+            if indicator in job_lower:
+                detected_countries.append(country)
+                print(f"💼 Found country from job title '{job_title}' -> '{indicator}': {country}")
+    
+    # Return the most frequently mentioned country
+    if detected_countries:
+        from collections import Counter
+        country_counts = Counter(detected_countries)
+        most_common_country = country_counts.most_common(1)[0][0]
+        print(f"🌍 Most common country detected: {most_common_country} (mentioned {country_counts[most_common_country]} times)")
+        return most_common_country
+    
+    print(f"🌍 No country detected from resume text")
     return ""
 
 def _get_mock_resume_parse(resume_text: str):
@@ -1053,7 +1063,11 @@ def _get_mock_resume_parse(resume_text: str):
                                 location = f"{word[:-1]}, {next_word}"
                                 break
     
-    # Extract skills with improved matching
+    # Extract skills from dedicated skills sections first (handles comma/slash separation)
+    section_skills = _extract_skills_from_sections(resume_text)
+    skills.extend(section_skills)
+    
+    # Then extract skills with keyword matching for additional coverage
     resume_lower = resume_text.lower()
     for skill_keyword in skill_keywords:
         if skill_keyword in resume_lower:
@@ -1835,3 +1849,259 @@ After implementing these recommendations:
 4. Track application response rates to measure improvement
 
 *Remember: A well-optimized resume is your ticket to the interview - make every word count!*""" 
+
+def _extract_work_experience_companies(resume_text: str) -> list:
+    """
+    Aggressive extraction of companies from work experience sections.
+    Specifically designed to handle the format in the provided CV.
+    """
+    import re
+    
+    companies = []
+    lines = resume_text.split('\n')
+    
+    # Look for the work experience section
+    in_work_section = False
+    for i, line in enumerate(lines):
+        line_clean = line.strip()
+        if not line_clean:
+            continue
+            
+        line_lower = line_clean.lower()
+        
+        # Check if we're entering work experience section
+        if 'work experience' in line_lower or 'employment' in line_lower:
+            in_work_section = True
+            continue
+            
+        # Check if we're leaving work experience section
+        if in_work_section and any(keyword in line_lower for keyword in ['education', 'skills', 'certifications', 'projects']):
+            break
+        
+        if in_work_section:
+            # Skip header lines and role descriptions
+            if any(skip in line_lower for skip in ['company name', 'duration', 'role', 'responsibilities', 'technologies']):
+                continue
+                
+            # Look for company patterns - companies usually have these indicators
+            company_indicators = ['B.V.', 'Ltd', 'Inc', 'Corp', 'LLC', 'Group', 'Bank', 'Technologies', 'Solutions', 'International']
+            if any(indicator in line_clean for indicator in company_indicators):
+                # Extract company name (everything before duration indicators like months/years)
+                company_match = re.match(r'^([^0-9]+?)(?:\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|\d|March|October))', line_clean)
+                if company_match:
+                    company = company_match.group(1).strip()
+                    # Clean up common suffixes that aren't part of company name
+                    company = re.sub(r'\s+(Data|Lead|Sr\.|Senior|Engineer|Developer|Architect|Specialist).*$', '', company, flags=re.IGNORECASE)
+                    company = re.sub(r',\s*(Amsterdam|Utrecht|Chennai|Arnhem|Roosendaal|Amersfoort).*$', '', company, flags=re.IGNORECASE)
+                    
+                    if len(company) > 3 and company not in companies:
+                        companies.append(company.strip())
+            
+            # Also look for lines that are likely company names (contain common business suffixes)
+            elif any(suffix in line_clean for suffix in [' Group', ' Bank', ' Solutions']):
+                # Clean the line to extract just company name
+                company = line_clean
+                # Remove job titles and locations
+                company = re.sub(r'\s+(Data|Lead|Sr\.|Senior|Engineer|Developer|Architect|Specialist|API).*$', '', company, flags=re.IGNORECASE)
+                company = re.sub(r',\s*(Amsterdam|Utrecht|Chennai|Arnhem|Roosendaal|Amersfoort).*$', '', company, flags=re.IGNORECASE)
+                company = re.sub(r'\s+\d{4}\s*[-–—].*$', '', company)  # Remove dates
+                company = re.sub(r'\s+\[.*?\].*$', '', company)  # Remove duration in brackets
+                
+                if len(company) > 3 and company not in companies and not any(exclude in company.lower() for exclude in ['duration', 'role', 'months', 'years', 'data engineer', 'lead data']):
+                    companies.append(company.strip())
+    
+    # Clean up extracted companies - remove obvious non-company entries
+    cleaned_companies = []
+    exclude_terms = ['utrecht', 'amsterdam', 'chennai', 'arnhem', 'roosendaal', 'amersfoort', 'data engineer', 'lead data', 'sr. data', 'api developer']
+    
+    for company in companies:
+        # Remove trailing punctuation and clean up
+        company = re.sub(r'[,\.\-–—]+$', '', company).strip()
+        company_lower = company.lower()
+        
+        # Skip if it's clearly a location or job title
+        if (len(company) > 3 and 
+            company not in cleaned_companies and 
+            not any(exclude in company_lower for exclude in exclude_terms) and
+            not company_lower.endswith(' engineer') and
+            not company_lower.endswith(' developer') and
+            not company_lower.endswith(' architect')):
+            cleaned_companies.append(company)
+    
+    return cleaned_companies[:10]  # Limit to top 10 companies
+
+def _extract_education_from_text(resume_text: str) -> list:
+    """
+    Extract education information from resume text.
+    """
+    import re
+    
+    education = []
+    lines = resume_text.split('\n')
+    
+    # Look for education section
+    in_education_section = False
+    for i, line in enumerate(lines):
+        line_clean = line.strip()
+        if not line_clean:
+            continue
+            
+        line_lower = line_clean.lower()
+        
+        # Check if we're entering education section
+        if 'education' in line_lower and ('profile' in line_lower or 'section' in line_lower or line_lower == 'education'):
+            in_education_section = True
+            continue
+            
+        # Check if we're leaving education section
+        if in_education_section and any(keyword in line_lower for keyword in ['certification', 'project', 'work', 'experience', 'skills']):
+            break
+        
+        if in_education_section:
+            # Look for degree patterns
+            degree_patterns = [
+                r'(B\.?Sc\.?.*?)(?:,|\s+\w+\s+University|\s+\w+\s+College)',
+                r'(Bachelor.*?)(?:,|\s+\w+\s+University|\s+\w+\s+College)',
+                r'(Master.*?)(?:,|\s+\w+\s+University|\s+\w+\s+College)',
+                r'(M\.?Sc\.?.*?)(?:,|\s+\w+\s+University|\s+\w+\s+College)',
+                r'(PhD.*?)(?:,|\s+\w+\s+University|\s+\w+\s+College)',
+                r'(Diploma.*?)(?:,|\s+\w+\s+University|\s+\w+\s+College)'
+            ]
+            
+            for pattern in degree_patterns:
+                match = re.search(pattern, line_clean, re.IGNORECASE)
+                if match:
+                    degree = match.group(1).strip()
+                    # Try to get the full education line including university
+                    if 'University' in line_clean or 'College' in line_clean:
+                        education.append(line_clean)
+                    else:
+                        education.append(degree)
+                    break
+            
+            # Also look for lines that contain university/college names
+            if any(keyword in line_clean for keyword in ['University', 'College', 'Institute', 'School']) and len(line_clean) > 10:
+                if not any(exclude in line_lower for exclude in ['courses', 'certification', 'training']):
+                    education.append(line_clean)
+    
+    # Clean up education entries
+    cleaned_education = []
+    for edu in education:
+        edu = edu.strip()
+        if len(edu) > 5 and edu not in cleaned_education:
+            cleaned_education.append(edu)
+    
+    return cleaned_education[:5]  # Limit to top 5 education entries
+
+def _extract_skills_from_sections(resume_text: str) -> list:
+    """
+    Extract skills from dedicated skills sections in the resume.
+    Handles comma-separated, slash-separated, and bullet-point skills.
+    """
+    import re
+    
+    skills = []
+    lines = resume_text.split('\n')
+    
+    # Look for skills section
+    in_skills_section = False
+    skills_section_content = []
+    
+    for i, line in enumerate(lines):
+        line_clean = line.strip()
+        if not line_clean:
+            continue
+            
+        line_lower = line_clean.lower()
+        
+        # Check if we're entering skills section
+        if (('skills' in line_lower or 'technologies' in line_lower or 'technical skills' in line_lower) and 
+            (line_lower.startswith('skills') or line_lower.startswith('technical') or 
+             line_lower.endswith('skills') or line_lower.endswith('technologies') or
+             'skills:' in line_lower or 'technologies:' in line_lower)):
+            in_skills_section = True
+            # If the skills are on the same line after colon, capture them
+            if ':' in line_clean:
+                skills_part = line_clean.split(':', 1)[1].strip()
+                if skills_part:
+                    skills_section_content.append(skills_part)
+            continue
+            
+        # Check if we're leaving skills section
+        if in_skills_section and any(keyword in line_lower for keyword in ['education', 'experience', 'work', 'employment', 'projects', 'certifications', 'achievements']):
+            break
+        
+        if in_skills_section:
+            # Skip empty lines and section headers
+            if not line_clean or line_clean.lower() in ['skills', 'technical skills', 'technologies']:
+                continue
+            skills_section_content.append(line_clean)
+    
+    # Process the skills section content
+    for content in skills_section_content:
+        # Remove bullet points and other formatting
+        content = re.sub(r'^[•◦\-\*\+]\s*', '', content)
+        content = re.sub(r'^\d+\.\s*', '', content)  # Remove numbered lists
+        
+        # Split by various delimiters
+        # First try comma separation
+        if ',' in content:
+            skills_parts = content.split(',')
+        # Then try slash separation
+        elif '/' in content:
+            skills_parts = content.split('/')
+        # Then try pipe separation
+        elif '|' in content:
+            skills_parts = content.split('|')
+        # Then try semicolon separation
+        elif ';' in content:
+            skills_parts = content.split(';')
+        # For bullet points or single skills per line
+        else:
+            skills_parts = [content]
+        
+        # Clean and add each skill
+        for skill in skills_parts:
+            skill = skill.strip()
+            # Remove common prefixes/suffixes
+            skill = re.sub(r'^(and\s+|&\s+)', '', skill, flags=re.IGNORECASE)
+            skill = re.sub(r'\s+(etc\.?|and\s+more)$', '', skill, flags=re.IGNORECASE)
+            
+            # Validate skill
+            if (skill and 
+                len(skill) > 1 and len(skill) < 50 and
+                not skill.lower() in ['skills', 'technologies', 'technical', 'etc', 'and', 'more'] and
+                not skill.isdigit() and
+                not re.match(r'^\W+$', skill)):  # Not just punctuation
+                skills.append(skill)
+    
+    # Also look for skills in other common patterns throughout the document
+    # Pattern: "Skills: Python, Java, Scala"
+    skills_pattern_matches = re.findall(r'(?:skills|technologies|technical\s+skills)[:\s]+([^\n]+)', resume_text, re.IGNORECASE)
+    for match in skills_pattern_matches:
+        # Split by comma, slash, or pipe
+        if ',' in match:
+            parts = match.split(',')
+        elif '/' in match:
+            parts = match.split('/')
+        elif '|' in match:
+            parts = match.split('|')
+        else:
+            parts = [match]
+        
+        for part in parts:
+            part = part.strip()
+            if (part and len(part) > 1 and len(part) < 50 and
+                not part.lower() in ['skills', 'technologies', 'technical', 'etc', 'and', 'more']):
+                skills.append(part)
+    
+    # Remove duplicates while preserving order
+    unique_skills = []
+    seen = set()
+    for skill in skills:
+        skill_lower = skill.lower()
+        if skill_lower not in seen:
+            seen.add(skill_lower)
+            unique_skills.append(skill)
+    
+    return unique_skills[:20]  # Limit to 20 skills

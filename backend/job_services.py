@@ -3,75 +3,645 @@ Job Services Module for CareerCompassAI
 
 This module provides job recommendation services using multiple job APIs
 and AI-powered matching to deliver personalized job recommendations.
+ONLY REAL JOBS - NO MOCK DATA.
 """
 
 import asyncio
 import json
 import random
 import os
+import re
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
+
+def _generate_realistic_apply_url(company: str, title: str, job_id: str = None) -> str:
+    """
+    Generate realistic apply URLs for different job boards
+    """
+    if not job_id:
+        job_id = str(random.randint(3000000000, 3999999999))
+    
+    # Choose random job board with weighted probability
+    job_boards = [
+        ("linkedin", 0.4),  # 40% LinkedIn
+        ("indeed", 0.3),    # 30% Indeed
+        ("glassdoor", 0.15), # 15% Glassdoor
+        ("company", 0.15)   # 15% Company website
+    ]
+    
+    # Select job board based on weights
+    rand = random.random()
+    cumulative = 0
+    selected_board = "linkedin"
+    
+    for board, weight in job_boards:
+        cumulative += weight
+        if rand <= cumulative:
+            selected_board = board
+            break
+    
+    # Generate URL based on selected board
+    if selected_board == "linkedin":
+        return f"https://www.linkedin.com/jobs/view/{job_id}"
+    elif selected_board == "indeed":
+        return f"https://www.indeed.com/viewjob?jk={job_id[:8]}"
+    elif selected_board == "glassdoor":
+        return f"https://www.glassdoor.com/job-listing/{job_id}"
+    else:  # company website
+        company_domain = company.lower().replace(' ', '').replace(',', '').replace('.', '')
+        return f"https://careers.{company_domain}.com/jobs/{job_id}"
 
 # Import real job API services
 try:
     from job_api_services import JobAggregator, validate_job_posting, check_job_availability
     REAL_APIS_AVAILABLE = True
-except ImportError:
+    print("✅ Real job API services loaded successfully")
+except ImportError as e:
+    print(f"⚠️  Import error for job_api_services: {e}")
     REAL_APIS_AVAILABLE = False
-    print("⚠️  Real job APIs not available, using mock data")
+except Exception as e:
+    print(f"⚠️  Unexpected error loading job_api_services: {e}")
+    REAL_APIS_AVAILABLE = False
+
+# Force enable real APIs for testing
+print(f"🔧 REAL_APIS_AVAILABLE status: {REAL_APIS_AVAILABLE}")
+
+# Override to always try real APIs first
+USE_REAL_JOBS = os.getenv('USE_REAL_JOBS', 'true').lower() == 'true'
+print(f"🔧 USE_REAL_JOBS environment variable: {USE_REAL_JOBS}")
+
+if USE_REAL_JOBS:
+    print("🚀 Real job APIs are ENABLED - will fetch from external APIs")
+else:
+    print("⚠️  Real job APIs are DISABLED - will return empty results")
 
 def _extract_country_from_location(location: str) -> str:
     """
     Extract country name from location string using word boundaries to prevent partial matches.
+    Enhanced to handle more location formats and provide better fallbacks.
     """
     if not location:
         return ""
     
-    location_lower = location.lower()
+    location_lower = location.lower().strip()
     
-    # Country mapping with word boundary patterns
+    # Country mapping with word boundary patterns - enhanced with more variations
     country_patterns = {
-        r'\busa\b|\bus\b|\bunited states\b|\bamerica\b': 'United States',
-        r'\buk\b|\bunited kingdom\b|\bbritain\b|\bengland\b': 'United Kingdom',
+        r'\busa\b|\bus\b|\bunited states\b|\bamerica\b|\bunited states of america\b': 'United States',
+        r'\buk\b|\bunited kingdom\b|\bbritain\b|\bengland\b|\bscotland\b|\bwales\b': 'United Kingdom',
         r'\bcanada\b': 'Canada',
-        r'\bgermany\b|\bdeutschland\b': 'Germany',
-        r'\bfrance\b': 'France',
-        r'\bspain\b': 'Spain',
-        r'\bitaly\b': 'Italy',
-        r'\bnetherlands\b|\bholland\b': 'Netherlands',
-        r'\bbelgium\b': 'Belgium',
-        r'\bswitzerland\b': 'Switzerland',
-        r'\baustria\b': 'Austria',
-        r'\bsweden\b': 'Sweden',
-        r'\bnorway\b': 'Norway',
-        r'\bdenmark\b': 'Denmark',
-        r'\bfinland\b': 'Finland',
-        r'\bindia\b': 'India',
-        r'\bchina\b': 'China',
-        r'\bjapan\b': 'Japan',
-        r'\bsingapore\b': 'Singapore',
-        r'\baustralia\b': 'Australia',
-        r'\bbrazil\b': 'Brazil',
-        r'\bmexico\b': 'Mexico',
-        r'\bireland\b': 'Ireland',
-        r'\bpoland\b': 'Poland',
-        r'\bczech republic\b': 'Czech Republic'
+        r'\bgermany\b|\bdeutschland\b|\bde\b': 'Germany',
+        r'\bfrance\b|\bfr\b': 'France',
+        r'\bspain\b|\bespaña\b|\bes\b': 'Spain',
+        r'\bitaly\b|\bitalia\b|\bit\b': 'Italy',
+        r'\bnetherlands\b|\bholland\b|\bnl\b|\bdutch\b': 'Netherlands',
+        r'\bbelgium\b|\bbelgië\b|\bbe\b': 'Belgium',
+        r'\bswitzerland\b|\bschweiz\b|\bch\b': 'Switzerland',
+        r'\baustria\b|\bösterreich\b|\bat\b': 'Austria',
+        r'\bsweden\b|\bsverige\b|\bse\b': 'Sweden',
+        r'\bnorway\b|\bnorge\b|\bno\b': 'Norway',
+        r'\bdenmark\b|\bdanmark\b|\bdk\b': 'Denmark',
+        r'\bfinland\b|\bsuomi\b|\bfi\b': 'Finland',
+        r'\bindia\b|\bbharat\b|\bin\b': 'India',
+        r'\bchina\b|\bprc\b|\bcn\b': 'China',
+        r'\bjapan\b|\bnippon\b|\bjp\b': 'Japan',
+        r'\bsingapore\b|\bsg\b': 'Singapore',
+        r'\baustralia\b|\bau\b': 'Australia',
+        r'\bbrazil\b|\bbrasil\b|\bbr\b': 'Brazil',
+        r'\bmexico\b|\bméxico\b|\bmx\b': 'Mexico',
+        r'\bireland\b|\béire\b|\bie\b': 'Ireland',
+        r'\bpoland\b|\bpolska\b|\bpl\b': 'Poland',
+        r'\bczech republic\b|\bczechia\b|\bcz\b': 'Czech Republic',
+        r'\buae\b|\bunited arab emirates\b|\bemirati\b': 'UAE',
+        r'\bportugal\b|\bpt\b': 'Portugal',
+        r'\brussia\b|\brussian federation\b|\bru\b': 'Russia',
+        r'\bukraine\b|\bua\b': 'Ukraine',
+        r'\bturkey\b|\bturkiye\b|\btr\b': 'Turkey',
+        r'\bisrael\b|\bil\b': 'Israel',
+        r'\bsouth africa\b|\bza\b': 'South Africa',
+        r'\bsouth korea\b|\bkorea\b|\bkr\b': 'South Korea',
+        r'\bnew zealand\b|\bnz\b': 'New Zealand'
     }
     
     # Check for country patterns using word boundaries
-    import re
     for pattern, country in country_patterns.items():
         if re.search(pattern, location_lower):
             return country
     
-    # Check for US state abbreviations
-    us_states = ['ca', 'ny', 'tx', 'fl', 'wa', 'il', 'pa', 'oh', 'ga', 'nc', 'mi', 'nj', 'va', 'tn', 'az', 'ma', 'in', 'mo', 'md', 'wi', 'co', 'mn', 'sc', 'al', 'la', 'ky', 'or', 'ok', 'ct', 'ut', 'ia', 'nv', 'ar', 'ms', 'ks', 'nm', 'ne', 'wv', 'id', 'hi', 'nh', 'me', 'mt', 'ri', 'de', 'sd', 'nd', 'ak', 'vt', 'wy']
-    for state in us_states:
-        pattern = rf'\b{state}\b'
-        if re.search(pattern, location_lower):
-            return 'United States'
+    # Check for US state abbreviations and full names
+    us_states = {
+        'ca': 'United States', 'california': 'United States',
+        'ny': 'United States', 'new york': 'United States',
+        'tx': 'United States', 'texas': 'United States',
+        'fl': 'United States', 'florida': 'United States',
+        'wa': 'United States', 'washington': 'United States',
+        'il': 'United States', 'illinois': 'United States',
+        'pa': 'United States', 'pennsylvania': 'United States',
+        'oh': 'United States', 'ohio': 'United States',
+        'ga': 'United States', 'georgia': 'United States',
+        'nc': 'United States', 'north carolina': 'United States',
+        'mi': 'United States', 'michigan': 'United States',
+        'nj': 'United States', 'new jersey': 'United States',
+        'va': 'United States', 'virginia': 'United States',
+        'tn': 'United States', 'tennessee': 'United States',
+        'az': 'United States', 'arizona': 'United States',
+        'ma': 'United States', 'massachusetts': 'United States',
+        'in': 'United States', 'indiana': 'United States',
+        'mo': 'United States', 'missouri': 'United States',
+        'md': 'United States', 'maryland': 'United States',
+        'wi': 'United States', 'wisconsin': 'United States',
+        'co': 'United States', 'colorado': 'United States',
+        'mn': 'United States', 'minnesota': 'United States'
+    }
     
-    return location  # Return original if no mapping found
+    for state, country in us_states.items():
+        pattern = rf'\b{re.escape(state)}\b'
+        if re.search(pattern, location_lower):
+            return country
+    
+    # Check for major European cities
+    european_cities = {
+        'amsterdam': 'Netherlands', 'rotterdam': 'Netherlands', 'utrecht': 'Netherlands', 'the hague': 'Netherlands', 'eindhoven': 'Netherlands',
+        'berlin': 'Germany', 'munich': 'Germany', 'hamburg': 'Germany', 'frankfurt': 'Germany', 'cologne': 'Germany', 'stuttgart': 'Germany',
+        'london': 'United Kingdom', 'manchester': 'United Kingdom', 'edinburgh': 'United Kingdom', 'birmingham': 'United Kingdom', 'bristol': 'United Kingdom',
+        'paris': 'France', 'lyon': 'France', 'marseille': 'France', 'toulouse': 'France',
+        'stockholm': 'Sweden', 'gothenburg': 'Sweden', 'malmö': 'Sweden',
+        'oslo': 'Norway', 'bergen': 'Norway', 'trondheim': 'Norway',
+        'copenhagen': 'Denmark', 'aarhus': 'Denmark',
+        'helsinki': 'Finland', 'tampere': 'Finland',
+        'zurich': 'Switzerland', 'geneva': 'Switzerland', 'basel': 'Switzerland',
+        'vienna': 'Austria', 'salzburg': 'Austria', 'graz': 'Austria',
+        'dublin': 'Ireland', 'cork': 'Ireland',
+        'madrid': 'Spain', 'barcelona': 'Spain', 'valencia': 'Spain',
+        'rome': 'Italy', 'milan': 'Italy', 'naples': 'Italy', 'turin': 'Italy',
+        'brussels': 'Belgium', 'antwerp': 'Belgium', 'ghent': 'Belgium'
+    }
+    
+    for city, country in european_cities.items():
+        if city in location_lower:
+            return country
+    
+    # If no specific country found but location contains European indicators
+    if any(indicator in location_lower for indicator in ['europe', 'european', 'eu']):
+        return 'Europe'  # Generic European location
+    
+    # Return original location if no mapping found (could be a valid country name we don't recognize)
+    return location.title()  # Return with proper capitalization
+
+def _calculate_job_relevance_score(job: Dict[str, Any], user_skills: List[str], user_jobs: List[str], user_experience: str) -> int:
+    """
+    Calculate comprehensive job relevance score based on multiple factors.
+    Returns score from 0-100.
+    """
+    score = 0
+    
+    # 1. Skills matching (40% weight)
+    job_skills = job.get('required_skills', [])
+    job_description = job.get('description', '').lower()
+    
+    if user_skills:
+        skill_matches = 0
+        for skill in user_skills:
+            skill_lower = skill.lower()
+            # Check exact skill matches
+            if any(skill_lower in req_skill.lower() for req_skill in job_skills):
+                skill_matches += 2  # Exact match gets 2 points
+            # Check skill mentions in description
+            elif skill_lower in job_description:
+                skill_matches += 1  # Description mention gets 1 point
+        
+        skill_score = min(40, (skill_matches / len(user_skills)) * 40)
+        score += skill_score
+    
+    # 2. Job title matching (30% weight)
+    job_title = job.get('title', '').lower()
+    title_score = 0
+    
+    if user_jobs:
+        for user_job in user_jobs:
+            if user_job:
+                user_job_words = user_job.lower().split()
+                job_title_words = job_title.split()
+                
+                # Check for exact title matches
+                if user_job.lower() in job_title:
+                    title_score += 15
+                # Check for keyword matches
+                else:
+                    word_matches = sum(1 for word in user_job_words if word in job_title_words and len(word) > 2)
+                    title_score += min(10, word_matches * 3)
+        
+        title_score = min(30, title_score)
+        score += title_score
+    
+    # 3. Experience level matching (20% weight)
+    job_level = job.get('experience_level', '').lower()
+    experience_score = 0
+    
+    if user_experience:
+        # Extract years from experience
+        experience_years = 0
+        experience_match = re.search(r'(\d+)', user_experience)
+        if experience_match:
+            experience_years = int(experience_match.group(1))
+        
+        # Map experience to levels
+        if experience_years >= 10:
+            user_level = ['senior', 'lead', 'principal', 'staff']
+        elif experience_years >= 5:
+            user_level = ['senior', 'mid', 'intermediate']
+        elif experience_years >= 2:
+            user_level = ['mid', 'intermediate', 'junior']
+        else:
+            user_level = ['junior', 'entry', 'graduate']
+        
+        if any(level in job_level for level in user_level):
+            experience_score = 20
+        elif 'senior' in job_level and experience_years >= 3:
+            experience_score = 15
+        elif 'junior' in job_level and experience_years <= 5:
+            experience_score = 15
+        else:
+            experience_score = 10
+    
+    score += experience_score
+    
+    # 4. Company and role quality (10% weight)
+    quality_indicators = ['senior', 'lead', 'principal', 'architect', 'manager', 'director']
+    if any(indicator in job_title for indicator in quality_indicators):
+        score += 5
+    
+    # Check for reputable company indicators
+    company = job.get('company', '').lower()
+    if any(indicator in company for indicator in ['tech', 'data', 'software', 'digital', 'innovation']):
+        score += 5
+    
+    return min(100, int(score))
+
+def _get_location_priority_score(job_location: str, job_country: str, user_country: str, is_remote: bool = False) -> int:
+    """
+    Calculate location priority score for job recommendations.
+    Higher score = higher priority in results.
+    ENHANCED to give maximum priority to user's exact country.
+    
+    Priority order (ENHANCED):
+    1. User's exact country (120 points) - MAXIMUM PRIORITY
+    2. Remote jobs (100 points) - Very high priority
+    3. Same region/nearby countries (85-80 points)
+    4. Tech hub countries (75-70 points)
+    5. English-speaking countries (70 points)
+    6. Other countries (60-50 points)
+    """
+    if not user_country:
+        # If no user country, prioritize remote jobs and tech hubs
+        if is_remote or 'remote' in job_location.lower():
+            return 100
+        # Prioritize major tech hubs when no user location
+        tech_hubs = ['United States', 'United Kingdom', 'Germany', 'Netherlands', 'Canada', 'Singapore', 'Australia']
+        if job_country in tech_hubs:
+            return 75
+        return 60
+    
+    # ENHANCED: User's exact country gets MAXIMUM priority (increased from 100 to 120)
+    if job_country == user_country:
+        print(f"🏠 EXACT COUNTRY MATCH: {job_country} = {user_country} - Priority Score: 120")
+        return 120
+    
+    # Remote jobs get very high priority regardless of user location (increased from 95 to 100)
+    if is_remote or 'remote' in job_location.lower():
+        print(f"🌐 REMOTE JOB DETECTED - Priority Score: 100")
+        return 100
+    
+    # Define country groups for proximity scoring
+    european_countries = ['Germany', 'Austria', 'Switzerland', 'Netherlands', 'Belgium', 'United Kingdom', 'Sweden', 'Norway', 'Denmark', 'Finland', 'France', 'Spain', 'Italy', 'Ireland', 'Poland', 'Czech Republic', 'Portugal']
+    english_speaking = ['United States', 'United Kingdom', 'Canada', 'Australia', 'Ireland', 'Singapore', 'New Zealand']
+    tech_hubs = ['United States', 'United Kingdom', 'Germany', 'Netherlands', 'Canada', 'Singapore', 'UAE', 'Australia', 'Switzerland', 'Sweden', 'Denmark', 'Norway']
+    
+    # ENHANCED: Regional proximity scoring with higher scores
+    if user_country in european_countries and job_country in european_countries:
+        # Same European region gets high priority
+        if user_country in ['Netherlands', 'Germany', 'Belgium'] and job_country in ['Netherlands', 'Germany', 'Belgium']:
+            return 90  # DACH/Benelux region (increased from 85)
+        elif user_country in ['Sweden', 'Norway', 'Denmark', 'Finland'] and job_country in ['Sweden', 'Norway', 'Denmark', 'Finland']:
+            return 90  # Nordic region (increased from 85)
+        else:
+            return 85  # General European (increased from 80)
+    
+    # English-speaking country preference (enhanced)
+    if user_country in english_speaking and job_country in english_speaking:
+        return 85  # Increased from 80
+    
+    # Tech hub countries get medium-high priority
+    if job_country in tech_hubs:
+        return 75
+    
+    # English-speaking countries get preference for non-English speakers
+    if job_country in english_speaking:
+        return 70
+    
+    # European countries get preference for European users
+    if user_country in european_countries and job_country in european_countries:
+        return 70
+    
+    # All other countries get lower priority
+    return 50
+
+def _prioritize_jobs_by_relevance_and_location(jobs: List[Dict[str, Any]], user_skills: List[str], user_jobs: List[str], user_experience: str, user_country: str) -> List[Dict[str, Any]]:
+    """
+    Sort jobs by combined relevance and location priority.
+    Enhanced prioritization algorithm that gives stronger weight to:
+    1. User's location/country (highest priority)
+    2. Current job title relevance 
+    3. Experience level matching
+    4. Skills matching
+    """
+    for job in jobs:
+        # Calculate relevance score
+        relevance_score = _calculate_job_relevance_score(job, user_skills, user_jobs, user_experience)
+        job['relevance_score'] = relevance_score
+        
+        # Calculate location priority
+        job_location = job.get('location', '')
+        job_country = job.get('country', '')
+        is_remote = job.get('remote', False) or 'remote' in job_location.lower()
+        
+        location_priority = _get_location_priority_score(job_location, job_country, user_country, is_remote)
+        job['location_priority'] = location_priority
+        
+        # Enhanced job title matching score (separate from general relevance)
+        job_title_score = _calculate_job_title_relevance(job.get('title', ''), user_jobs)
+        job['job_title_score'] = job_title_score
+        
+        # Enhanced experience level matching score
+        experience_match_score = _calculate_experience_match(job.get('experience_level', ''), user_experience)
+        job['experience_match_score'] = experience_match_score
+        
+        # Enhanced skills matching score
+        skills_match_score = _calculate_skills_match(job, user_skills)
+        job['skills_match_score'] = skills_match_score
+        
+        # ENHANCED COMBINED SCORE CALCULATION with stronger location priority
+        if user_country and job_country == user_country:
+            # User's country jobs get MAXIMUM boost - these should appear first
+            job['combined_score'] = (
+                (location_priority * 0.5) +      # 50% weight for location (user country = 120 points)
+                (job_title_score * 0.2) +        # 20% weight for job title relevance
+                (skills_match_score * 0.2) +     # 20% weight for skills matching
+                (experience_match_score * 0.1)   # 10% weight for experience matching
+            ) + 40  # +40 bonus points for user's country (increased from +30)
+            print(f"🎯 USER COUNTRY PRIORITY: {job['title']} at {job['company']} ({job_country}) - Score: {job['combined_score']:.1f}")
+            
+        elif is_remote:
+            # Remote jobs get high priority but less than user's country
+            job['combined_score'] = (
+                (location_priority * 0.4) +      # 40% weight for location (remote = 100 points)
+                (job_title_score * 0.25) +       # 25% weight for job title relevance
+                (skills_match_score * 0.25) +    # 25% weight for skills matching
+                (experience_match_score * 0.1)   # 10% weight for experience matching
+            ) + 20  # +20 bonus for remote work (increased from +15)
+            print(f"🌐 REMOTE JOB: {job['title']} at {job['company']} - Score: {job['combined_score']:.1f}")
+            
+        else:
+            # Standard scoring for other countries
+            job['combined_score'] = (
+                (location_priority * 0.25) +     # 25% weight for location
+                (job_title_score * 0.35) +       # 35% weight for job title relevance
+                (skills_match_score * 0.25) +    # 25% weight for skills matching
+                (experience_match_score * 0.15)  # 15% weight for experience matching
+            )
+            
+        # Keep original match_score for backward compatibility
+        job['match_score'] = relevance_score
+    
+    # ENHANCED SORTING: Primary sort by combined score, secondary sorts for tie-breaking
+    jobs.sort(key=lambda x: (
+        x.get('combined_score', 0),           # Primary: Combined score
+        x.get('location_priority', 0),        # Secondary: Location priority
+        x.get('job_title_score', 0),          # Tertiary: Job title relevance
+        x.get('skills_match_score', 0),       # Quaternary: Skills matching
+        x.get('experience_match_score', 0)    # Quinary: Experience matching
+    ), reverse=True)
+    
+    # Enhanced debug logging for top jobs
+    print(f"🔝 TOP 10 PRIORITIZED JOBS (Enhanced Algorithm):")
+    for i, job in enumerate(jobs[:10]):
+        country_flag = "🏠" if job.get('country') == user_country else "🌍"
+        remote_flag = "🌐" if job.get('remote') or 'remote' in job.get('location', '').lower() else ""
+        print(f"   {i+1}. {country_flag}{remote_flag} {job['title']} at {job['company']} ({job.get('country', 'Unknown')})")
+        print(f"      📊 Combined: {job.get('combined_score', 0):.1f} | 📍 Location: {job.get('location_priority', 0)} | 💼 Title: {job.get('job_title_score', 0):.1f} | 🛠️ Skills: {job.get('skills_match_score', 0):.1f}")
+    
+    return jobs
+
+def _calculate_job_title_relevance(job_title: str, user_jobs: List[str]) -> float:
+    """
+    Calculate ENHANCED job title relevance score with strong focus on role matching.
+    Returns score from 0-100 based on how well the job title matches user's previous roles.
+    PRIORITIZES exact role matches (Data Engineer, Data Architect, etc.)
+    """
+    if not user_jobs or not job_title:
+        return 0.0
+    
+    job_title_lower = job_title.lower()
+    total_score = 0.0
+    
+    # Define role-specific keywords with high weights
+    data_engineering_keywords = ['data engineer', 'data engineering', 'data pipeline', 'etl', 'data architect', 'data architecture', 'big data', 'data platform']
+    software_engineering_keywords = ['software engineer', 'software developer', 'backend engineer', 'frontend engineer', 'full stack', 'web developer']
+    senior_keywords = ['senior', 'lead', 'principal', 'staff', 'architect', 'manager', 'director', 'head of']
+    
+    for user_job in user_jobs:
+        if not user_job:
+            continue
+            
+        user_job_clean = user_job.replace('❖', '').strip().lower()
+        # Remove contact info and certifications
+        user_job_clean = re.sub(r'\+?\d{1,3}[-.\s]?\d{3,4}[-.\s]?\d{3,4}[-.\s]?\d{3,4}', '', user_job_clean)
+        user_job_clean = re.sub(r'\S+@\S+', '', user_job_clean)
+        user_job_clean = re.sub(r'certified|certification', '', user_job_clean).strip()
+        
+        if len(user_job_clean) < 3:
+            continue
+        
+        # HIGHEST PRIORITY: Exact role type matching
+        user_is_data_role = any(keyword in user_job_clean for keyword in data_engineering_keywords)
+        job_is_data_role = any(keyword in job_title_lower for keyword in data_engineering_keywords)
+        
+        user_is_software_role = any(keyword in user_job_clean for keyword in software_engineering_keywords)
+        job_is_software_role = any(keyword in job_title_lower for keyword in software_engineering_keywords)
+        
+        # Perfect role match gets maximum score
+        if user_is_data_role and job_is_data_role:
+            total_score += 80.0  # VERY HIGH score for data role match
+            print(f"🎯 PERFECT DATA ROLE MATCH: {job_title} matches {user_job_clean}")
+        elif user_is_software_role and job_is_software_role:
+            total_score += 70.0  # High score for software role match
+        elif user_is_data_role and job_is_software_role:
+            total_score += 20.0  # Low score - role mismatch
+        elif user_is_software_role and job_is_data_role:
+            total_score += 25.0  # Slightly better - could transition
+        
+        # Exact title match (additional bonus)
+        if user_job_clean in job_title_lower or job_title_lower in user_job_clean:
+            total_score += 30.0
+            continue
+        
+        # Word-by-word matching (reduced weight)
+        user_words = [word for word in user_job_clean.split() if len(word) > 2]
+        job_words = [word for word in job_title_lower.split() if len(word) > 2]
+        
+        word_matches = 0
+        for user_word in user_words:
+            for job_word in job_words:
+                if user_word == job_word:
+                    word_matches += 3  # Exact word match
+                elif user_word in job_word or job_word in user_word:
+                    word_matches += 1  # Partial word match
+        
+        if user_words:
+            word_score = min(20.0, (word_matches / len(user_words)) * 20)  # Reduced from 40
+            total_score += word_score
+        
+        # Seniority level matching
+        user_is_senior = any(keyword in user_job_clean for keyword in senior_keywords)
+        job_is_senior = any(keyword in job_title_lower for keyword in senior_keywords)
+        
+        if user_is_senior and job_is_senior:
+            total_score += 15.0
+        elif not user_is_senior and not job_is_senior:
+            total_score += 5.0
+    
+    return min(100.0, total_score)
+
+def _calculate_experience_match(job_experience_level: str, user_experience: str) -> float:
+    """
+    Calculate enhanced experience level matching score.
+    Returns score from 0-100 based on how well the job's experience requirements match user's experience.
+    """
+    if not user_experience:
+        return 50.0  # Neutral score if no user experience provided
+    
+    # Extract years from user experience
+    experience_years = 0
+    experience_match = re.search(r'(\d+)', user_experience)
+    if experience_match:
+        experience_years = int(experience_match.group(1))
+    
+    job_level_lower = job_experience_level.lower()
+    
+    # Define experience level mappings
+    if experience_years >= 15:
+        user_levels = ['principal', 'staff', 'director', 'vp', 'senior', 'lead']
+        ideal_score = 100.0
+    elif experience_years >= 10:
+        user_levels = ['senior', 'lead', 'principal', 'staff']
+        ideal_score = 95.0
+    elif experience_years >= 7:
+        user_levels = ['senior', 'lead', 'mid', 'intermediate']
+        ideal_score = 90.0
+    elif experience_years >= 5:
+        user_levels = ['senior', 'mid', 'intermediate']
+        ideal_score = 85.0
+    elif experience_years >= 3:
+        user_levels = ['mid', 'intermediate', 'senior']
+        ideal_score = 80.0
+    elif experience_years >= 1:
+        user_levels = ['junior', 'mid', 'intermediate', 'entry']
+        ideal_score = 75.0
+    else:
+        user_levels = ['entry', 'junior', 'graduate', 'intern']
+        ideal_score = 70.0
+    
+    # Check for exact level matches
+    for level in user_levels:
+        if level in job_level_lower:
+            return ideal_score
+    
+    # Partial matching logic
+    if experience_years >= 8 and any(keyword in job_level_lower for keyword in ['senior', 'lead']):
+        return 85.0
+    elif experience_years >= 3 and any(keyword in job_level_lower for keyword in ['mid', 'intermediate']):
+        return 80.0
+    elif experience_years <= 2 and any(keyword in job_level_lower for keyword in ['junior', 'entry']):
+        return 75.0
+    
+    # Default score for unclear or missing job level
+    return 60.0
+
+def _calculate_skills_match(job: Dict[str, Any], user_skills: List[str]) -> float:
+    """
+    Calculate ENHANCED skills matching score with focus on technical relevance.
+    Returns score from 0-100 based on how well user's skills match job requirements.
+    PRIORITIZES data engineering and architecture skills.
+    """
+    if not user_skills:
+        return 0.0
+    
+    job_skills = job.get('required_skills', [])
+    job_description = job.get('description', '').lower()
+    job_title = job.get('title', '').lower()
+    
+    total_score = 0.0
+    skill_matches = 0
+    
+    # Define skill categories with different weights
+    data_engineering_skills = ['python', 'sql', 'spark', 'kafka', 'airflow', 'snowflake', 'aws', 'azure', 'gcp', 'etl', 'data pipeline', 'big data', 'hadoop', 'hive', 'cassandra', 'elasticsearch', 'mongodb', 'postgresql', 'mysql', 'redshift', 'databricks', 'dbt', 'terraform', 'docker', 'kubernetes']
+    
+    architecture_skills = ['microservices', 'system design', 'distributed systems', 'cloud architecture', 'solution architect', 'data architecture', 'api design', 'scalability', 'performance']
+    
+    programming_skills = ['java', 'scala', 'python', 'javascript', 'typescript', 'go', 'rust', 'c++']
+    
+    for skill in user_skills:
+        skill_lower = skill.lower().strip()
+        if len(skill_lower) < 2:
+            continue
+        
+        skill_score = 0.0
+        
+        # Check for exact skill matches in required skills (highest priority)
+        for req_skill in job_skills:
+            if skill_lower in req_skill.lower() or req_skill.lower() in skill_lower:
+                # Higher score for data engineering skills
+                if any(de_skill in skill_lower for de_skill in data_engineering_skills):
+                    skill_score = max(skill_score, 15.0)  # VERY HIGH for data skills
+                elif any(arch_skill in skill_lower for arch_skill in architecture_skills):
+                    skill_score = max(skill_score, 12.0)  # HIGH for architecture skills
+                else:
+                    skill_score = max(skill_score, 8.0)   # Standard for other skills
+        
+        # Check for skill mentions in job title (high priority)
+        if skill_lower in job_title:
+            if any(de_skill in skill_lower for de_skill in data_engineering_skills):
+                skill_score = max(skill_score, 12.0)
+            else:
+                skill_score = max(skill_score, 6.0)
+        
+        # Check for skill mentions in job description (medium priority)
+        if skill_lower in job_description:
+            if any(de_skill in skill_lower for de_skill in data_engineering_skills):
+                skill_score = max(skill_score, 8.0)
+            else:
+                skill_score = max(skill_score, 3.0)
+        
+        # Special bonus for critical data engineering skills
+        critical_data_skills = ['python', 'sql', 'spark', 'kafka', 'aws', 'azure', 'airflow', 'snowflake']
+        if any(critical_skill in skill_lower for critical_skill in critical_data_skills):
+            skill_score *= 1.5  # 50% bonus for critical data skills
+        
+        total_score += skill_score
+        if skill_score > 0:
+            skill_matches += 1
+    
+    # Calculate final score with emphasis on skill relevance
+    if user_skills:
+        base_score = (total_score / len(user_skills)) * 8  # Scale to 0-100
+        # Bonus for high percentage of skills matched
+        match_percentage = skill_matches / len(user_skills)
+        bonus = match_percentage * 30  # Up to 30 bonus points for high match percentage
+        
+        final_score = min(100.0, base_score + bonus)
+        return final_score
+    
+    return 0.0
 
 async def get_real_job_recommendations(
     skills: List[str], 
@@ -82,484 +652,211 @@ async def get_real_job_recommendations(
     """
     Get real job recommendations from multiple job APIs
     """
-    if not REAL_APIS_AVAILABLE:
-        return []
+    print("🌐 Starting real job API search...")
     
+    # Always try RemoteOK API first (no API key required)
+    remoteok_jobs = []
     try:
-        # Extract country for better API targeting
-        user_country = _extract_country_from_location(location) if location else ""
-        
-        # Create search queries based on user profile
-        search_queries = []
-        
-        # Generate queries from job titles
-        for job_title in last_two_jobs:
-            if job_title and len(job_title.strip()) > 2:
-                # Clean job title (remove certifications, contact info)
-                clean_title = job_title.replace('❖', '').strip()
-                # Remove phone numbers and emails
-                import re
-                clean_title = re.sub(r'\+?\d{1,3}[-.\s]?\d{3,4}[-.\s]?\d{3,4}[-.\s]?\d{3,4}', '', clean_title)
-                clean_title = re.sub(r'\S+@\S+', '', clean_title)
-                clean_title = clean_title.strip()
+        print("📡 Trying RemoteOK API (no API key required)...")
+        import aiohttp
+        async with aiohttp.ClientSession() as session:
+            async with session.get("https://remoteok.io/api") as response:
+                if response.status == 200:
+                    data = await response.json()
+                    # Parse RemoteOK jobs
+                    for job_data in data[1:11]:  # Skip first item (metadata) and get 10 jobs
+                        if isinstance(job_data, dict):
+                            job = {
+                                'id': job_data.get('id', f"remoteok_{len(remoteok_jobs)}"),
+                                'title': job_data.get('position', 'Software Developer'),
+                                'company': job_data.get('company', 'Remote Company'),
+                                'location': 'Remote',
+                                'country': 'Global',
+                                'salary': job_data.get('salary', 'Competitive'),
+                                'description': job_data.get('description', 'Remote job opportunity')[:500] + '...',
+                                'required_skills': job_data.get('tags', [])[:5],
+                                'experience_level': 'Mid-level',
+                                'job_type': 'Full-time',
+                                'remote': True,
+                                'source': 'RemoteOK',
+                                'postedDate': job_data.get('date', ''),
+                                'daysAgo': 1,
+                                'applyUrl': job_data.get('url', f"https://remoteok.io/remote-jobs/{job_data.get('id', 'job')}"),
+                                'company_logo': job_data.get('logo', ''),
+                                'match_score': 80,
+                                'is_real_job': True
+                            }
+                            remoteok_jobs.append(job)
+                    print(f"✅ Fetched {len(remoteok_jobs)} jobs from RemoteOK API")
+                else:
+                    print(f"❌ RemoteOK API returned status: {response.status}")
+    except Exception as e:
+        print(f"❌ Error fetching from RemoteOK API: {e}")
+
+    # Try to use JobAggregator if available
+    aggregator_jobs = []
+    if REAL_APIS_AVAILABLE:
+        try:
+            print("📡 Trying JobAggregator (JSearch + Adzuna APIs)...")
+            # Extract country for better API targeting
+            user_country = _extract_country_from_location(location) if location else ""
+            
+            # Create search queries based on user profile
+            search_queries = []
+            
+            # Generate TARGETED queries from job titles
+            for job_title in last_two_jobs:
+                if job_title and len(job_title.strip()) > 2:
+                    # Clean job title (remove certifications, contact info)
+                    clean_title = job_title.replace('❖', '').strip()
+                    # Remove phone numbers and emails
+                    clean_title = re.sub(r'\+?\d{1,3}[-.\s]?\d{3,4}[-.\s]?\d{3,4}[-.\s]?\d{3,4}', '', clean_title)
+                    clean_title = re.sub(r'\S+@\S+', '', clean_title)
+                    clean_title = re.sub(r'certified|certification', '', clean_title, flags=re.IGNORECASE)
+                    clean_title = clean_title.strip()
+                    
+                    if clean_title and len(clean_title) > 5:
+                        # Prioritize data engineering roles
+                        if any(keyword in clean_title.lower() for keyword in ['data engineer', 'data architect', 'data platform', 'data pipeline']):
+                            search_queries.insert(0, clean_title)  # Add to front for priority
+                        else:
+                            search_queries.append(clean_title)
+            
+            # Generate SPECIFIC queries from skills (focus on data technologies)
+            data_skills = []
+            for skill in skills[:10]:  # Top 10 skills
+                skill_clean = skill.strip()
+                if len(skill_clean) > 2 and not any(cert in skill_clean.lower() for cert in ['certified', 'certification']):
+                    # Prioritize data engineering skills
+                    if any(data_tech in skill_clean.lower() for data_tech in ['python', 'sql', 'spark', 'kafka', 'airflow', 'snowflake', 'aws', 'azure', 'data']):
+                        data_skills.insert(0, skill_clean)
+                    else:
+                        data_skills.append(skill_clean)
+            
+            # Create targeted skill-based queries
+            if data_skills:
+                # Combine top data skills for targeted search
+                if len(data_skills) >= 3:
+                    search_queries.append(f"Data Engineer {' '.join(data_skills[:3])}")
+                    search_queries.append(f"Data Architect {' '.join(data_skills[:2])}")
+                else:
+                    search_queries.append(f"Data Engineer {' '.join(data_skills)}")
+            
+            # Fallback queries based on user profile analysis
+            if not search_queries:
+                # Analyze user skills to determine best fallback
+                user_skills_lower = [skill.lower() for skill in skills]
                 
-                if clean_title and len(clean_title) > 5:
-                    search_queries.append(clean_title)
-        
-        # Generate queries from skills (focus on main technologies)
-        tech_skills = []
-        for skill in skills[:5]:  # Top 5 skills
-            skill_clean = skill.strip()
-            if len(skill_clean) > 2 and not any(cert in skill_clean.lower() for cert in ['certified', 'certification']):
-                tech_skills.append(skill_clean)
-        
-        if tech_skills:
-            search_queries.append(' '.join(tech_skills[:3]))  # Combine top 3 skills
-        
-        # Fallback queries if no good job titles
-        if not search_queries:
-            if any('data' in skill.lower() for skill in skills):
-                search_queries.append('Data Engineer')
-            elif any('software' in skill.lower() or 'developer' in skill.lower() for skill in skills):
-                search_queries.append('Software Engineer')
-            else:
-                search_queries.append('Software Developer')
-        
-        print(f"🔍 Searching real job APIs with queries: {search_queries}")
-        print(f"   Location: {location}")
-        print(f"   Country: {user_country}")
-        
-        # Search all APIs with different queries
-        aggregator = JobAggregator()
-        all_jobs = []
-        
-        for query in search_queries[:3]:  # Limit to 3 queries to avoid rate limits
-            try:
-                jobs = await aggregator.search_all_apis(
-                    query=query,
-                    location=location or "",
-                    country=user_country
-                )
-                all_jobs.extend(jobs)
-                
-                # Add small delay between queries
-                await asyncio.sleep(0.5)
-                
-            except Exception as e:
-                print(f"❌ Error searching with query '{query}': {e}")
-                continue
-        
+                if any('data' in skill for skill in user_skills_lower):
+                    if any(skill in user_skills_lower for skill in ['architect', 'architecture', 'solution']):
+                        search_queries.extend(['Data Architect', 'Solution Architect Data', 'Data Platform Architect'])
+                    else:
+                        search_queries.extend(['Data Engineer', 'Senior Data Engineer', 'Data Pipeline Engineer'])
+                elif any(skill in user_skills_lower for skill in ['software', 'developer', 'programming']):
+                    search_queries.extend(['Software Engineer', 'Backend Engineer', 'Full Stack Engineer'])
+                else:
+                    search_queries.extend(['Software Developer', 'Engineer'])
+            
+            print(f"🔍 Targeted search queries: {search_queries[:5]}")  # Show first 5
+            
+            # Search all available APIs with different queries
+            aggregator = JobAggregator()
+            
+            for query in search_queries[:3]:  # Limit to 3 queries to avoid rate limits
+                try:
+                    jobs = await aggregator.search_all_apis(
+                        query=query,
+                        location=location or "",
+                        country=user_country
+                    )
+                    aggregator_jobs.extend(jobs)
+                    
+                    # Add small delay between queries
+                    await asyncio.sleep(0.5)
+                    
+                except Exception as e:
+                    print(f"❌ Error searching with query '{query}': {e}")
+                    continue
+            
+            print(f"✅ Fetched {len(aggregator_jobs)} jobs from JobAggregator APIs")
+            
+        except Exception as e:
+            print(f"❌ Error using JobAggregator: {e}")
+    else:
+        print("⚠️  JobAggregator not available, skipping JSearch/Adzuna APIs")
+
+    # Combine all real jobs
+    all_real_jobs = remoteok_jobs + aggregator_jobs
+    
+    if all_real_jobs:
         # Remove duplicates and validate jobs
         unique_jobs = []
         seen_jobs = set()
         
-        for job in all_jobs:
+        for job in all_real_jobs:
             # Create unique key
             job_key = (job.get('title', '').lower(), job.get('company', '').lower())
             
-            if job_key not in seen_jobs and validate_job_posting(job):
+            if job_key not in seen_jobs:
                 seen_jobs.add(job_key)
-                unique_jobs.append(job)
+                # Validate job has required fields
+                if job.get('title') and job.get('company'):
+                    unique_jobs.append(job)
         
-        # Sort by match score and limit results
-        unique_jobs.sort(key=lambda x: x.get('match_score', 0), reverse=True)
-        
-        print(f"✅ Found {len(unique_jobs)} real job recommendations from APIs")
-        
-        return unique_jobs[:20]  # Return top 20 jobs
-        
-    except Exception as e:
-        print(f"❌ Error getting real job recommendations: {e}")
-        return []
-
-def _get_mock_job_recommendations(skills: List[str], experience: str, last_two_jobs: List[str], location: Optional[str] = None) -> List[Dict[str, Any]]:
-    """
-    Generate mock job recommendations for development/testing purposes.
-    Returns realistic job data that matches the user's profile.
-    Enhanced to better match recent job titles and location.
-    """
-    
-    print(f"🔍 Generating MOCK job recommendations for:")
-    print(f"   Skills: {skills}")
-    print(f"   Experience: {experience}")
-    print(f"   Last jobs: {last_two_jobs}")
-    print(f"   Location: {location}")
-    
-    # Extract country from location for better job matching
-    user_country = _extract_country_from_location(location) if location else None
-    print(f"   Detected Country: {user_country}")
-    
-    # Enhanced job templates with more variety and better matching
-    job_templates = [
-        # Data Engineering Jobs
-        {
-            "title": "Senior Data Engineer",
-            "company": "DataFlow Technologies",
-            "location": "San Francisco, CA" if user_country == "United States" else "London, UK" if user_country == "United Kingdom" else "Berlin, Germany" if user_country == "Germany" else "Toronto, Canada" if user_country == "Canada" else "Sydney, Australia" if user_country == "Australia" else "Remote",
-            "salary_range": "$140,000 - $180,000" if user_country == "United States" else "£80,000 - £120,000" if user_country == "United Kingdom" else "€70,000 - €100,000" if user_country == "Germany" else "CAD $120,000 - $160,000" if user_country == "Canada" else "AUD $130,000 - $170,000" if user_country == "Australia" else "$120,000 - $160,000",
-            "description": f"Lead data engineering initiatives in {user_country or 'a global environment'}. Build scalable data pipelines and work with cutting-edge technologies.",
-            "required_skills": ["Python", "Apache Spark", "Kafka", "AWS", "SQL"],
-            "experience_level": "Senior",
-            "job_type": "Full-time",
-            "remote": user_country not in ["United States", "United Kingdom", "Germany"],
-            "keywords": ["data", "engineer", "spark", "kafka", "etl", "pipeline"]
-        },
-        {
-            "title": "Lead Data Engineer / Solution Architect",
-            "company": "CloudData Solutions",
-            "location": "New York, NY" if user_country == "United States" else "Manchester, UK" if user_country == "United Kingdom" else "Munich, Germany" if user_country == "Germany" else "Vancouver, Canada" if user_country == "Canada" else "Melbourne, Australia" if user_country == "Australia" else "Remote",
-            "salary_range": "$160,000 - $200,000" if user_country == "United States" else "£90,000 - £130,000" if user_country == "United Kingdom" else "€80,000 - €110,000" if user_country == "Germany" else "CAD $140,000 - $180,000" if user_country == "Canada" else "AUD $150,000 - $190,000" if user_country == "Australia" else "$140,000 - $180,000",
-            "description": f"Architect and implement enterprise data solutions in {user_country or 'a distributed team environment'}. Lead technical teams and drive innovation.",
-            "required_skills": ["Scala", "Apache Spark", "Kafka", "Azure", "Data Architecture"],
-            "experience_level": "Lead",
-            "job_type": "Full-time",
-            "remote": False,
-            "keywords": ["lead", "architect", "solution", "data", "enterprise"]
-        },
-        {
-            "title": "Principal Data Engineer",
-            "company": "TechGiant Corp",
-            "location": "Seattle, WA" if user_country == "United States" else "Edinburgh, UK" if user_country == "United Kingdom" else "Frankfurt, Germany" if user_country == "Germany" else "Montreal, Canada" if user_country == "Canada" else "Brisbane, Australia" if user_country == "Australia" else "Remote",
-            "salary_range": "$180,000 - $220,000" if user_country == "United States" else "£100,000 - £140,000" if user_country == "United Kingdom" else "€90,000 - €120,000" if user_country == "Germany" else "CAD $160,000 - $200,000" if user_country == "Canada" else "AUD $170,000 - $210,000" if user_country == "Australia" else "$160,000 - $200,000",
-            "description": f"Drive data engineering strategy and innovation in {user_country or 'a global technology company'}. Mentor teams and shape technical direction.",
-            "required_skills": ["Python", "Scala", "Kafka", "Snowflake", "Machine Learning"],
-            "experience_level": "Principal",
-            "job_type": "Full-time",
-            "remote": True,
-            "keywords": ["principal", "strategy", "innovation", "data", "ml"]
-        },
-        
-        # Software Engineering Jobs
-        {
-            "title": "Senior Software Engineer",
-            "company": "InnovateTech",
-            "location": "Austin, TX" if user_country == "United States" else "Cambridge, UK" if user_country == "United Kingdom" else "Hamburg, Germany" if user_country == "Germany" else "Calgary, Canada" if user_country == "Canada" else "Perth, Australia" if user_country == "Australia" else "Remote",
-            "salary_range": "$130,000 - $170,000" if user_country == "United States" else "£75,000 - £110,000" if user_country == "United Kingdom" else "€65,000 - €95,000" if user_country == "Germany" else "CAD $110,000 - $150,000" if user_country == "Canada" else "AUD $120,000 - $160,000" if user_country == "Australia" else "$110,000 - $150,000",
-            "description": f"Develop innovative software solutions in {user_country or 'a collaborative remote environment'}. Work with modern technologies and agile methodologies.",
-            "required_skills": ["Java", "Spring Boot", "Microservices", "Kubernetes", "AWS"],
-            "experience_level": "Senior",
-            "job_type": "Full-time",
-            "remote": True,
-            "keywords": ["software", "engineer", "java", "spring", "microservices"]
-        },
-        
-        # Cloud/DevOps Jobs
-        {
-            "title": "Cloud Solutions Architect",
-            "company": "CloudFirst Technologies",
-            "location": "Denver, CO" if user_country == "United States" else "Bristol, UK" if user_country == "United Kingdom" else "Stuttgart, Germany" if user_country == "Germany" else "Ottawa, Canada" if user_country == "Canada" else "Adelaide, Australia" if user_country == "Australia" else "Remote",
-            "salary_range": "$150,000 - $190,000" if user_country == "United States" else "£85,000 - £125,000" if user_country == "United Kingdom" else "€75,000 - €105,000" if user_country == "Germany" else "CAD $130,000 - $170,000" if user_country == "Canada" else "AUD $140,000 - $180,000" if user_country == "Australia" else "$130,000 - $170,000",
-            "description": f"Design and implement cloud infrastructure solutions in {user_country or 'a global cloud environment'}. Lead digital transformation initiatives.",
-            "required_skills": ["AWS", "Azure", "Terraform", "Kubernetes", "DevOps"],
-            "experience_level": "Senior",
-            "job_type": "Full-time",
-            "remote": False,
-            "keywords": ["cloud", "architect", "aws", "azure", "devops"]
-        }
-    ]
-    
-    # Enhanced matching logic
-    user_skills_lower = [skill.lower().strip() for skill in skills]
-    last_jobs_lower = [job.lower().strip() for job in last_two_jobs]
-    matched_jobs = []
-    
-    # Extract experience level from user's job titles
-    user_level = "Mid-level"  # default
-    for job in last_jobs_lower:
-        if any(level in job for level in ["senior", "sr.", "lead", "principal", "staff"]):
-            user_level = "Senior"
-            break
-        elif any(level in job for level in ["manager", "director", "head"]):
-            user_level = "Leadership"
-            break
-    
-    for template in job_templates:
-        # Calculate skill match score
-        required_skills_lower = [skill.lower() for skill in template["required_skills"]]
-        skill_matches = sum(1 for skill in user_skills_lower 
-                          if any(req_skill in skill or skill in req_skill 
-                                for req_skill in required_skills_lower))
-        skill_match_score = skill_matches / len(template["required_skills"]) if template["required_skills"] else 0
-        
-        # Enhanced job title matching
-        title_match_score = 0
-        template_keywords = template.get("keywords", [])
-        template_title_lower = template["title"].lower()
-        
-        for user_job in last_jobs_lower:
-            # Direct title matching
-            if user_job in template_title_lower or template_title_lower in user_job:
-                title_match_score = max(title_match_score, 0.9)
-            
-            # Keyword matching
-            for keyword in template_keywords:
-                if keyword in user_job or any(word in user_job for word in keyword.split()):
-                    title_match_score = max(title_match_score, 0.7)
-            
-            # Role type matching (engineer, architect, etc.)
-            user_job_words = user_job.split()
-            template_words = template_title_lower.split()
-            common_role_words = set(user_job_words) & set(template_words)
-            if common_role_words:
-                title_match_score = max(title_match_score, 0.5)
-        
-        # Location matching bonus
-        location_match_score = 0
-        if location:
-            location_lower = location.lower()
-            template_location_lower = template["location"].lower()
-            
-            if location_lower in template_location_lower or template_location_lower in location_lower:
-                location_match_score = 0.3
-            elif template.get("remote", False):
-                location_match_score = 0.2  # Remote jobs get some location bonus
-            elif "remote" in template_location_lower or "global" in template_location_lower:
-                location_match_score = 0.2
-        else:
-            # If no location specified, prefer remote jobs
-            if template.get("remote", False):
-                location_match_score = 0.1
-        
-        # Experience level matching
-        experience_match_score = 0
-        template_level = template.get("experience_level", "Mid-level")
-        if user_level == template_level:
-            experience_match_score = 0.2
-        elif (user_level == "Senior" and template_level in ["Lead", "Principal"]) or \
-             (user_level == "Leadership" and template_level in ["Senior", "Lead", "Principal"]):
-            experience_match_score = 0.1
-        
-        # Calculate total match score
-        total_match_score = (
-            skill_match_score * 0.4 +           # 40% weight on skills
-            title_match_score * 0.3 +           # 30% weight on job title
-            location_match_score * 0.2 +        # 20% weight on location
-            experience_match_score * 0.1         # 10% weight on experience level
+        # ENHANCED FILTERING: Remove irrelevant jobs based on user profile
+        filtered_jobs = []
+        user_is_data_professional = any(
+            keyword in ' '.join(last_two_jobs).lower() 
+            for keyword in ['data engineer', 'data architect', 'data scientist', 'data analyst', 'data platform']
         )
         
-        # Include jobs with reasonable match scores or strong title matches
-        if total_match_score > 0.25 or title_match_score > 0.6:
-            # Extract country from location
-            location_parts = template["location"].split(", ")
-            country = location_parts[-1] if len(location_parts) > 1 else "USA"
+        for job in unique_jobs:
+            job_title_lower = job.get('title', '').lower()
             
-            job = {
-                "id": f"mock_job_{len(matched_jobs) + 1}",
-                "title": template["title"],
-                "company": template["company"],
-                "location": template["location"],
-                "country": country,
-                "salary": template["salary_range"],
-                "description": template["description"],
-                "required_skills": template["required_skills"],
-                "experience_level": template["experience_level"],
-                "job_type": template["job_type"],
-                "remote": template["remote"],
-                "match_score": round(total_match_score * 100),
-                "skill_matches": skill_matches,
-                "title_match": round(title_match_score * 100),
-                "location_match": round(location_match_score * 100),
-                "source": "CareerCompass AI (Demo)",
-                "postedDate": (datetime.now() - timedelta(days=random.randint(1, 30))).strftime("%Y-%m-%d"),
-                "daysAgo": random.randint(1, 30),
-                "applyUrl": f"https://www.linkedin.com/jobs/search/?keywords={template['title'].replace(' ', '%20')}&location={template['location'].replace(' ', '%20').replace(',', '%2C')}",
-                "company_logo": f"https://logo.clearbit.com/{template['company'].lower().replace(' ', '').replace(',', '')}.com",
-                "is_real_job": False  # Mark as mock data
-            }
-            matched_jobs.append(job)
-    
-    # Sort by total match score, then by title match, then by skill match
-    matched_jobs.sort(key=lambda x: (x["match_score"], x["title_match"], x["skill_matches"]), reverse=True)
-    
-    # Add location-specific jobs if user provided location
-    if location and len(matched_jobs) < 10:
-        location_jobs = _generate_location_specific_jobs(location, skills, last_two_jobs, len(matched_jobs))
-        matched_jobs.extend(location_jobs)
-    
-    # Add additional variety if still not enough jobs
-    if len(matched_jobs) < 15:
-        additional_jobs = _generate_additional_jobs(skills, last_two_jobs, user_level, len(matched_jobs))
-        matched_jobs.extend(additional_jobs)
-    
-    return matched_jobs[:15]  # Return top 15 matches
-
-def _generate_location_specific_jobs(location: str, skills: List[str], last_jobs: List[str], start_id: int) -> List[Dict[str, Any]]:
-    """Generate jobs specific to the user's location"""
-    location_jobs = []
-    
-    # Common job titles based on user's background
-    base_titles = []
-    for job in last_jobs:
-        if "data engineer" in job.lower():
-            base_titles.extend(["Data Engineer", "Senior Data Engineer", "Data Platform Engineer"])
-        elif "software engineer" in job.lower():
-            base_titles.extend(["Software Engineer", "Senior Software Engineer", "Full Stack Engineer"])
-        elif "architect" in job.lower():
-            base_titles.extend(["Solutions Architect", "Technical Architect", "System Architect"])
-    
-    if not base_titles:
-        base_titles = ["Software Engineer", "Data Engineer", "DevOps Engineer"]
-    
-    # Generate location-specific companies and jobs
-    for i, title in enumerate(base_titles[:5]):
-        # Extract country from location
-        location_parts = location.split(", ")
-        country = location_parts[-1] if len(location_parts) > 1 else "USA"
+            # If user is a data professional, filter out non-data roles
+            if user_is_data_professional:
+                # Keep data-related roles
+                if any(keyword in job_title_lower for keyword in [
+                    'data engineer', 'data architect', 'data scientist', 'data analyst', 
+                    'data platform', 'data pipeline', 'analytics engineer', 'ml engineer',
+                    'machine learning', 'big data', 'etl', 'data warehouse'
+                ]):
+                    filtered_jobs.append(job)
+                    print(f"✅ RELEVANT DATA ROLE: {job.get('title')} at {job.get('company')}")
+                # Also keep senior technical roles that could be relevant
+                elif any(keyword in job_title_lower for keyword in [
+                    'solution architect', 'cloud architect', 'platform engineer',
+                    'devops engineer', 'infrastructure engineer'
+                ]) and any(tech in job_title_lower for tech in ['senior', 'lead', 'principal']):
+                    filtered_jobs.append(job)
+                    print(f"✅ RELEVANT SENIOR ROLE: {job.get('title')} at {job.get('company')}")
+                else:
+                    print(f"❌ FILTERED OUT: {job.get('title')} (not relevant for data professional)")
+            else:
+                # For non-data professionals, keep all technical roles
+                if any(keyword in job_title_lower for keyword in [
+                    'engineer', 'developer', 'architect', 'analyst', 'scientist'
+                ]):
+                    filtered_jobs.append(job)
+                else:
+                    print(f"❌ FILTERED OUT: {job.get('title')} (not technical role)")
         
-        job = {
-            "id": f"mock_location_job_{start_id + i + 1}",
-            "title": title,
-            "company": f"Local Tech Solutions {i+1}",
-            "location": location,
-            "country": country,
-            "salary": "$90,000 - $130,000",
-            "description": f"Join our {location}-based team to work on innovative technology solutions.",
-            "required_skills": skills[:4] if skills else ["Programming", "Problem Solving"],
-            "experience_level": "Mid-Senior",
-            "job_type": "Full-time",
-            "remote": False,
-            "match_score": random.randint(70, 85),
-            "skill_matches": min(len(skills), 4),
-            "title_match": 80 if any(job_word in title.lower() for job in last_jobs for job_word in job.lower().split()) else 60,
-            "location_match": 100,  # Perfect location match
-            "source": "CareerCompass AI (Demo)",
-            "postedDate": (datetime.now() - timedelta(days=random.randint(1, 15))).strftime("%Y-%m-%d"),
-            "daysAgo": random.randint(1, 15),
-            "applyUrl": f"https://www.indeed.com/jobs?q={title.replace(' ', '+')}&l={location.replace(' ', '+').replace(',', '%2C')}",
-            "company_logo": f"https://via.placeholder.com/100x100?text=Local{i+1}",
-            "is_real_job": False
-        }
-        location_jobs.append(job)
-    
-    return location_jobs
-
-def _generate_additional_jobs(skills: List[str], last_jobs: List[str], user_level: str, start_id: int) -> List[Dict[str, Any]]:
-    """Generate additional job variety to reach target count"""
-    additional_jobs = []
-    
-    # Job title variations based on skills and experience
-    job_variations = [
-        "Software Developer", "Full Stack Developer", "Backend Engineer", 
-        "Frontend Engineer", "DevOps Engineer", "Cloud Engineer",
-        "Data Analyst", "Machine Learning Engineer", "Product Manager",
-        "Technical Lead", "Engineering Manager", "Solutions Engineer"
-    ]
-    
-    # Salary ranges based on user level
-    salary_ranges = [
-        "$80,000 - $120,000", "$90,000 - $130,000", "$100,000 - $140,000",
-        "$110,000 - $150,000", "$120,000 - $160,000", "$130,000 - $170,000"
-    ]
-    
-    for i in range(min(10, 15 - start_id)):
-        title = job_variations[i % len(job_variations)]
-        location = "Remote" if i % 3 == 0 else f"Tech Hub {i+1}"
-        country = "Global" if i % 3 == 0 else "USA"
+        print(f"🎯 Filtered from {len(unique_jobs)} to {len(filtered_jobs)} relevant jobs")
         
-        job = {
-            "id": f"mock_additional_job_{start_id + i + 1}",
-            "title": title,
-            "company": f"TechCompany {i+1}",
-            "location": location,
-            "country": country,
-            "salary": salary_ranges[i % len(salary_ranges)],
-            "description": f"Exciting opportunity to work with cutting-edge technologies in a {user_level.lower()} role.",
-            "required_skills": skills[:3] if skills else ["Programming"],
-            "experience_level": user_level,
-            "job_type": "Full-time",
-            "remote": i % 3 == 0,
-            "match_score": random.randint(60, 80),
-            "skill_matches": min(len(skills), 3),
-            "title_match": 70 if any(job_word in title.lower() for job in last_jobs for job_word in job.lower().split()) else 50,
-            "location_match": 20,
-            "source": "CareerCompass AI (Demo)",
-            "postedDate": (datetime.now() - timedelta(days=random.randint(1, 20))).strftime("%Y-%m-%d"),
-            "daysAgo": random.randint(1, 20),
-            "applyUrl": f"https://www.glassdoor.com/Job/jobs.htm?suggestCount=0&suggestChosen=false&clickSource=searchBtn&typedKeyword={title.replace(' ', '+')}&sc.keyword={title.replace(' ', '+')}&locT=&locId=",
-            "company_logo": f"https://via.placeholder.com/100x100?text=Company{i+1}",
-            "is_real_job": False
-        }
-        additional_jobs.append(job)
-    
-    return additional_jobs
-
-async def get_personalized_job_recommendations(
-    skills: List[str], 
-    experience: str, 
-    last_two_jobs: List[str], 
-    location: Optional[str] = None
-) -> List[Dict[str, Any]]:
-    """
-    Get personalized job recommendations based on user profile.
-    
-    Args:
-        skills: List of user's skills
-        experience: User's experience description
-        last_two_jobs: User's last two job titles
-        location: Preferred job location (optional)
-    
-    Returns:
-        List of job recommendations with detailed information
-    """
-    try:
-        print(f"🔍 Generating job recommendations for:")
-        print(f"   Skills: {skills}")
-        print(f"   Experience: {experience}")
-        print(f"   Last jobs: {last_two_jobs}")
-        print(f"   Location: {location}")
-        
-        # Extract country from location for better job matching
-        user_country = _extract_country_from_location(location) if location else None
-        print(f"   Detected Country: {user_country}")
-        
-        # Try to get real job recommendations first
-        real_jobs = []
-        if REAL_APIS_AVAILABLE and os.getenv('USE_REAL_JOBS', 'false').lower() == 'true':
-            print("🌐 Attempting to fetch real job recommendations...")
-            real_jobs = await get_real_job_recommendations(skills, experience, last_two_jobs, location)
-        
-        # If we have real jobs, use them; otherwise fall back to mock data
-        if real_jobs:
-            print(f"✅ Using {len(real_jobs)} real job recommendations")
-            return real_jobs
+        # Apply location-based prioritization to filtered jobs
+        user_country = _extract_country_from_location(location) if location else ""
+        if user_country and filtered_jobs:
+            filtered_jobs = _prioritize_jobs_by_relevance_and_location(filtered_jobs, skills, last_two_jobs, experience, user_country)
+            print(f"📍 Applied location prioritization for {user_country} to filtered jobs")
         else:
-            print("⚠️  No real jobs found, using mock data for demonstration")
-            # Simulate API call delay for realistic experience
-            await asyncio.sleep(0.5)
-            
-            # Generate mock recommendations
-            recommendations = _get_mock_job_recommendations(skills, experience, last_two_jobs, location)
-            
-            print(f"✅ Generated {len(recommendations)} mock job recommendations")
-            
-            return recommendations
+            # Sort by match score only if no user country
+            filtered_jobs.sort(key=lambda x: x.get('match_score', 0), reverse=True)
         
-    except Exception as e:
-        print(f"❌ Error in job recommendations: {e}")
-        # Return fallback recommendations
-        return [
-            {
-                "id": "fallback_1",
-                "title": "Software Developer",
-                "company": "Tech Solutions Inc",
-                "location": "Remote",
-                "country": "Global",
-                "salary": "$70,000 - $100,000",
-                "description": "Join our team to build innovative software solutions.",
-                "required_skills": skills[:3] if skills else ["Programming"],
-                "experience_level": "Mid-level",
-                "job_type": "Full-time",
-                "remote": True,
-                "match_score": 75,
-                "skill_matches": min(len(skills), 3),
-                "source": "CareerCompass AI (Fallback)",
-                "postedDate": datetime.now().strftime("%Y-%m-%d"),
-                "daysAgo": 5,
-                "applyUrl": "https://www.linkedin.com/jobs/search/?keywords=Software%20Developer",
-                "company_logo": "https://via.placeholder.com/100x100?text=Company",
-                "is_real_job": False
-            }
-        ]
+        print(f"✅ Returning {len(filtered_jobs)} highly relevant job recommendations")
+        return filtered_jobs[:15]  # Return top 15 most relevant jobs
+    else:
+        print("❌ No real jobs found from any API")
+        return []
 
 def filter_jobs_by_location(jobs: List[Dict[str, Any]], location: str) -> List[Dict[str, Any]]:
     """Filter jobs by location preference"""
@@ -593,7 +890,6 @@ def calculate_salary_match(jobs: List[Dict[str, Any]], target_salary: Optional[i
         if "$" in salary_range:
             try:
                 # Extract numbers from salary range
-                import re
                 numbers = re.findall(r'\d+,?\d*', salary_range.replace(",", ""))
                 if len(numbers) >= 2:
                     min_salary = int(numbers[0]) * 1000
@@ -610,4 +906,84 @@ def calculate_salary_match(jobs: List[Dict[str, Any]], target_salary: Optional[i
         else:
             job["salary_match"] = 50
     
-    return jobs 
+    return jobs
+
+async def get_personalized_job_recommendations(
+    skills: List[str], 
+    experience: str, 
+    last_two_jobs: List[str], 
+    location: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """
+    Get personalized job recommendations based on user profile.
+    ONLY RETURNS REAL JOBS FROM APIS - NO MOCK DATA.
+    
+    Args:
+        skills: List of user's skills
+        experience: User's experience description
+        last_two_jobs: User's last two job titles
+        location: Preferred job location (optional)
+    
+    Returns:
+        List of real job recommendations or empty list if no real jobs found
+    """
+    try:
+        print(f"🔍 Searching for REAL job recommendations:")
+        print(f"   Skills: {skills}")
+        print(f"   Experience: {experience}")
+        print(f"   Last jobs: {last_two_jobs}")
+        print(f"   Location: {location}")
+        
+        # Extract country from location for better job matching
+        user_country = _extract_country_from_location(location) if location else None
+        print(f"   Detected Country: {user_country}")
+        
+        # Only try to get real job recommendations from APIs
+        real_jobs = []
+        print("🌐 Attempting to fetch REAL job recommendations from multiple APIs...")
+        print("   📡 Trying RemoteOK API (Remote jobs - no API key required)")
+        if REAL_APIS_AVAILABLE:
+            print("   📡 Trying JSearch API (LinkedIn/Indeed)")
+            print("   📡 Trying Adzuna API (Indeed/LinkedIn aggregator)")
+        else:
+            print("   ⚠️  JSearch and Adzuna APIs not available (missing API keys)")
+        
+        if not USE_REAL_JOBS:
+            print("❌ Real job APIs are disabled via USE_REAL_JOBS environment variable")
+            print("📋 No jobs will be returned - configure API keys to enable real job search")
+            return []
+        
+        try:
+            real_jobs = await get_real_job_recommendations(skills, experience, last_two_jobs, location)
+            if real_jobs:
+                print(f"✅ Successfully fetched {len(real_jobs)} REAL jobs from APIs")
+                # Log which APIs returned jobs
+                api_sources = set(job.get('source', 'Unknown') for job in real_jobs)
+                print(f"   📊 Sources: {', '.join(api_sources)}")
+                
+                # Apply advanced relevance and location scoring
+                scored_jobs = _prioritize_jobs_by_relevance_and_location(real_jobs, skills, last_two_jobs, experience, user_country)
+                
+                print(f"📊 Returning {len(scored_jobs)} real job recommendations")
+                return scored_jobs[:15]  # Return top 15 most relevant
+            else:
+                print("⚠️  Real APIs returned no jobs")
+        except Exception as e:
+            print(f"❌ Error fetching from real APIs: {e}")
+            real_jobs = []
+            
+        # No fallback to mock jobs - return empty list
+        print("📋 No real jobs found from any API source")
+        print("   💡 To enable real job sources:")
+        print("   - Set RAPID_API_KEY in .env for JSearch API (LinkedIn/Indeed)")
+        print("   - Set ADZUNA_APP_ID and ADZUNA_APP_KEY in .env for Adzuna API")
+        print("   - RemoteOK API requires no setup and should work automatically")
+        print("   - Check your internet connection")
+        print("❌ Returning empty job list - no mock data will be shown")
+        
+        return []  # Return empty list instead of mock jobs
+        
+    except Exception as e:
+        print(f"❌ Error in job recommendations: {e}")
+        print("❌ Returning empty job list due to error")
+        return []  # Return empty list instead of fallback mock jobs 

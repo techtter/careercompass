@@ -33,6 +33,7 @@ interface UserProfile {
   companies: string[];
   education: string[];
   certifications: string[];
+  raw_text?: string | null;  // For storing the actual CV content
 }
 
 interface JobRecommendation {
@@ -333,30 +334,74 @@ export default function Dashboard() {
         try {
             const token = await getToken();
             
-            const response = await fetch('/api/job-recommendations', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
-                },
-                body: JSON.stringify({
-                    skills: profile.skills,
-                    experience: `${profile.experienceYears} years`,
-                    lastTwoJobs: profile.lastThreeJobTitles.slice(0, 2),
-                    location: null
-                })
-            });
+            // For existing users, use the user profile endpoint which includes job recommendations
+            if (user?.id && isExistingUser) {
+                const response = await fetch(`/api/user-profile/${user.id}`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`,
+                    }
+                });
 
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('Failed to fetch user profile with jobs:', errorText);
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                
+                if (data.user_exists && data.job_recommendations) {
+                    setJobRecommendations(data.job_recommendations);
+                    console.log(`✅ Loaded ${data.job_recommendations.length} job recommendations from saved profile`);
+                    
+                    // Check if Netherlands jobs are prioritized
+                    const netherlandsJobs = data.job_recommendations.filter((job: any) => 
+                        job.country === 'Netherlands' || job.location?.includes('Netherlands')
+                    );
+                    if (netherlandsJobs.length > 0) {
+                        console.log(`🇳🇱 Found ${netherlandsJobs.length} Netherlands jobs prioritized`);
+                    }
+                } else {
+                    console.log('No job recommendations available for saved profile');
+                    setJobRecommendations([]);
+                }
+            } else {
+                // For new users with parsed data, use the direct job recommendations endpoint
+                const response = await fetch('/api/job-recommendations', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`,
+                    },
+                    body: JSON.stringify({
+                        skills: profile.skills,
+                        experience: `${profile.experienceYears} years`,
+                        lastTwoJobs: profile.lastThreeJobTitles.slice(0, 2),
+                        location: profile.location
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('Failed to fetch job recommendations:', errorText);
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                
+                if (data.jobs && Array.isArray(data.jobs)) {
+                    setJobRecommendations(data.jobs);
+                    console.log(`✅ Loaded ${data.jobs.length} job recommendations for new profile`);
+                } else {
+                    console.log('No job recommendations available');
+                    setJobRecommendations([]);
+                }
             }
-
-            const data = await response.json();
-            setJobRecommendations(data.jobs || []);
-
         } catch (error) {
             console.error('Error fetching job recommendations:', error);
-            // Silently fail - don't show error to user for job recommendations
+            setJobRecommendations([]);
         } finally {
             setLoadingJobs(false);
         }
@@ -382,23 +427,37 @@ export default function Dashboard() {
         
         try {
             const token = await getToken();
-            const response = await fetch('/api/save-cv', {
-                method: 'POST',
+            
+            // Prepare comprehensive profile data including CV content
+            const profileData = {
+                firstName: editableProfile.firstName,
+                lastName: editableProfile.lastName,
+                email: editableProfile.email,
+                phone: editableProfile.phone,
+                location: editableProfile.location,
+                experienceYears: editableProfile.experienceYears,
+                experienceSummary: editableProfile.experienceSummary,
+                skills: editableProfile.skills,
+                lastThreeJobTitles: editableProfile.lastThreeJobTitles,
+                companies: editableProfile.companies,
+                education: editableProfile.education,
+                certifications: editableProfile.certifications,
+                // Include the original CV content if available
+                raw_text: userProfile?.raw_text || null
+            };
+            
+            // Use the enhanced user profile update API
+            const response = await fetch(`/api/user-profile/${user.id}`, {
+                method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
                     Authorization: `Bearer ${token}`,
                 },
-                body: JSON.stringify({
-                    user_id: user.id,
-                    filename: 'profile_data.json',
-                    file_type: 'application/json',
-                    raw_text: JSON.stringify(editableProfile),
-                    parsed_data: editableProfile,
-                }),
+                body: JSON.stringify(profileData),
             });
 
             if (!response.ok) {
-                throw new Error('Failed to save profile');
+                throw new Error('Failed to save complete profile');
             }
 
             const result = await response.json();
@@ -407,9 +466,8 @@ export default function Dashboard() {
             setUserProfile(editableProfile);
             setEditableProfile(null);
             setIsEditingProfile(false);
-            setSavedCvId(result.cv_record_id);
             setLastUpdated(new Date().toISOString());
-            setParseSuccessMessage('✅ Profile updated successfully!');
+            setParseSuccessMessage('✅ Complete profile saved successfully! All details including skills, experience, education, certifications, and CV have been saved to the database.');
             
             // Save to localStorage
             localStorage.setItem('userProfile', JSON.stringify(editableProfile));
@@ -418,8 +476,8 @@ export default function Dashboard() {
             await fetchJobRecommendations(editableProfile);
             
         } catch (error) {
-            console.error('Error saving profile:', error);
-            setParseErrorMessage('Error saving profile. Please try again.');
+            console.error('Error saving complete profile:', error);
+            setParseErrorMessage('Error saving complete profile. Please try again.');
         } finally {
             setIsSavingProfile(false);
         }
@@ -939,6 +997,69 @@ export default function Dashboard() {
                                         ✏️ Edit Profile
                                     </Button>
                                     <Button 
+                                        onClick={async () => {
+                                            if (!userProfile || !user?.id) return;
+                                            
+                                            setIsSavingProfile(true);
+                                            setParseSuccessMessage("");
+                                            setParseErrorMessage("");
+                                            
+                                            try {
+                                                const token = await getToken();
+                                                
+                                                // Prepare comprehensive profile data
+                                                const profileData = {
+                                                    firstName: userProfile.firstName,
+                                                    lastName: userProfile.lastName,
+                                                    email: userProfile.email,
+                                                    phone: userProfile.phone,
+                                                    location: userProfile.location,
+                                                    experienceYears: userProfile.experienceYears,
+                                                    experienceSummary: userProfile.experienceSummary,
+                                                    skills: userProfile.skills,
+                                                    lastThreeJobTitles: userProfile.lastThreeJobTitles,
+                                                    companies: userProfile.companies,
+                                                    education: userProfile.education,
+                                                    certifications: userProfile.certifications,
+                                                    raw_text: userProfile.raw_text || null
+                                                };
+                                                
+                                                const response = await fetch(`/api/user-profile/${user.id}`, {
+                                                    method: 'PUT',
+                                                    headers: {
+                                                        'Content-Type': 'application/json',
+                                                        Authorization: `Bearer ${token}`,
+                                                    },
+                                                    body: JSON.stringify(profileData),
+                                                });
+
+                                                if (!response.ok) {
+                                                    throw new Error('Failed to save profile');
+                                                }
+
+                                                setLastUpdated(new Date().toISOString());
+                                                setParseSuccessMessage('✅ Complete profile saved successfully! All details including name, email, phone, experience, skills, companies, education, certifications, and CV have been saved to the database.');
+                                                
+                                            } catch (error) {
+                                                console.error('Error saving profile:', error);
+                                                setParseErrorMessage('Error saving profile. Please try again.');
+                                            } finally {
+                                                setIsSavingProfile(false);
+                                            }
+                                        }}
+                                        className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 font-medium"
+                                        disabled={isUploading || isEditingProfile || isSavingProfile}
+                                    >
+                                        {isSavingProfile ? (
+                                            <>
+                                                <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2"></div>
+                                                Saving...
+                                            </>
+                                        ) : (
+                                            <>💾 Save Profile</>
+                                        )}
+                                    </Button>
+                                    <Button 
                                         onClick={() => document.getElementById('cv-update-upload')?.click()}
                                         className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 font-medium"
                                         disabled={isUploading || isEditingProfile}
@@ -999,10 +1120,10 @@ export default function Dashboard() {
                                             {isSavingProfile ? (
                                                 <>
                                                     <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2"></div>
-                                                    Saving...
+                                                    Saving Complete Profile...
                                                 </>
                                             ) : (
-                                                <>💾 Save Profile</>
+                                                <>💾 Save Complete Profile</>
                                             )}
                                         </Button>
                                         <Button 
@@ -1096,6 +1217,107 @@ export default function Dashboard() {
                                                 />
                                             </div>
                                         </div>
+                                    </div>
+                                </div>
+                                
+                                {/* Additional Professional Information */}
+                                <div className="grid md:grid-cols-2 gap-6 mt-6">
+                                    {/* Skills */}
+                                    <div className="space-y-4">
+                                        <h4 className="font-semibold text-gray-800 border-b pb-2">Skills</h4>
+                                        <div>
+                                            <Label htmlFor="skills">Skills (comma-separated)</Label>
+                                            <textarea
+                                                id="skills"
+                                                value={editableProfile.skills.join(', ')}
+                                                onChange={(e) => setEditableProfile({
+                                                    ...editableProfile, 
+                                                    skills: e.target.value.split(',').map(skill => skill.trim()).filter(skill => skill)
+                                                })}
+                                                className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                rows={3}
+                                                placeholder="e.g., Python, JavaScript, React, Node.js"
+                                            />
+                                        </div>
+                                    </div>
+                                    
+                                    {/* Job Titles */}
+                                    <div className="space-y-4">
+                                        <h4 className="font-semibold text-gray-800 border-b pb-2">Recent Job Titles</h4>
+                                        <div>
+                                            <Label htmlFor="jobTitles">Job Titles (comma-separated)</Label>
+                                            <textarea
+                                                id="jobTitles"
+                                                value={editableProfile.lastThreeJobTitles.join(', ')}
+                                                onChange={(e) => setEditableProfile({
+                                                    ...editableProfile, 
+                                                    lastThreeJobTitles: e.target.value.split(',').map(title => title.trim()).filter(title => title)
+                                                })}
+                                                className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                rows={3}
+                                                placeholder="e.g., Senior Developer, Team Lead, Software Engineer"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                {/* Companies and Education */}
+                                <div className="grid md:grid-cols-2 gap-6 mt-6">
+                                    {/* Companies */}
+                                    <div className="space-y-4">
+                                        <h4 className="font-semibold text-gray-800 border-b pb-2">Companies</h4>
+                                        <div>
+                                            <Label htmlFor="companies">Companies Worked For (comma-separated)</Label>
+                                            <textarea
+                                                id="companies"
+                                                value={editableProfile.companies.join(', ')}
+                                                onChange={(e) => setEditableProfile({
+                                                    ...editableProfile, 
+                                                    companies: e.target.value.split(',').map(company => company.trim()).filter(company => company)
+                                                })}
+                                                className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                rows={3}
+                                                placeholder="e.g., Google, Microsoft, Apple"
+                                            />
+                                        </div>
+                                    </div>
+                                    
+                                    {/* Education */}
+                                    <div className="space-y-4">
+                                        <h4 className="font-semibold text-gray-800 border-b pb-2">Education</h4>
+                                        <div>
+                                            <Label htmlFor="education">Education (comma-separated)</Label>
+                                            <textarea
+                                                id="education"
+                                                value={editableProfile.education.join(', ')}
+                                                onChange={(e) => setEditableProfile({
+                                                    ...editableProfile, 
+                                                    education: e.target.value.split(',').map(edu => edu.trim()).filter(edu => edu)
+                                                })}
+                                                className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                rows={3}
+                                                placeholder="e.g., BS Computer Science, MS Data Science"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                {/* Certifications */}
+                                <div className="mt-6">
+                                    <h4 className="font-semibold text-gray-800 border-b pb-2 mb-4">Certifications</h4>
+                                    <div>
+                                        <Label htmlFor="certifications">Certifications (comma-separated)</Label>
+                                        <textarea
+                                            id="certifications"
+                                            value={editableProfile.certifications.join(', ')}
+                                            onChange={(e) => setEditableProfile({
+                                                ...editableProfile, 
+                                                certifications: e.target.value.split(',').map(cert => cert.trim()).filter(cert => cert)
+                                            })}
+                                            className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            rows={3}
+                                            placeholder="e.g., AWS Certified Solutions Architect, PMP, Scrum Master"
+                                        />
                                     </div>
                                 </div>
                             </div>

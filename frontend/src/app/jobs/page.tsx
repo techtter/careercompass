@@ -56,40 +56,41 @@ export default function JobsPage() {
         try {
             const token = await getToken();
             
-            // Get user profile from localStorage or fetch from API
-            const savedProfile = localStorage.getItem('userProfile');
-            if (!savedProfile) {
-                setError('No user profile found. Please upload and parse your resume first.');
-                setLoading(false);
-                return;
-            }
-
-            const userProfile = JSON.parse(savedProfile);
-            
-            const response = await fetch('/api/job-recommendations', {
-                method: 'POST',
+            // Use the user profile endpoint which includes job recommendations
+            const response = await fetch(`/api/user-profile/${user?.id}`, {
+                method: 'GET',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`,
-                },
-                body: JSON.stringify({
-                    skills: userProfile.skills || [],
-                    experience: userProfile.experience || '',
-                    lastTwoJobs: userProfile.lastTwoJobs || [],
-                    location: userProfile.location || ''
-                })
+                }
             });
 
             if (!response.ok) {
+                const errorText = await response.text();
+                console.error('Failed to fetch user profile with jobs:', errorText);
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
 
             const data = await response.json();
-            setJobs(data.jobs || []);
-
+            
+            if (data.user_exists && data.job_recommendations) {
+                setJobs(data.job_recommendations);
+                console.log(`✅ Loaded ${data.job_recommendations.length} job recommendations from saved profile`);
+                
+                // Check if Netherlands jobs are prioritized
+                const netherlandsJobs = data.job_recommendations.filter((job: any) => 
+                    job.country === 'Netherlands' || job.location?.includes('Netherlands')
+                );
+                if (netherlandsJobs.length > 0) {
+                    console.log(`🇳🇱 Found ${netherlandsJobs.length} Netherlands jobs prioritized`);
+                }
+            } else {
+                console.log('No job recommendations available for user profile');
+                setJobs([]);
+            }
         } catch (error) {
-            console.error('Error fetching jobs:', error);
-            setError('Failed to load job recommendations. Please try again.');
+            console.error('Error fetching job recommendations:', error);
+            setJobs([]);
         } finally {
             setLoading(false);
         }

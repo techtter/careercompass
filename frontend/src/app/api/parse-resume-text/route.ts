@@ -127,16 +127,44 @@ function extractSkills(text: string): string[] {
     }
   }
   
-  // Look for skills sections
+  // Look for skills sections with enhanced delimiter support
   const skillsSection = text.match(/skills[:\s]+(.*?)(?=\n\n|\n[A-Z]|$)/i);
   if (skillsSection) {
     const skillsText = skillsSection[1];
     const extractedSkills = skillsText
-      .split(/[,\n•\-]/)
+      .split(/[,\/\|\;\n•\-\+\*]/)  // Added slash, pipe, semicolon support
       .map(s => s.trim())
-      .filter(s => s.length > 2 && s.length < 50);
+      .filter(s => s.length > 2 && s.length < 50 && !['and', 'etc', 'more'].includes(s.toLowerCase()));
     
     extractedSkills.forEach(skill => skills.add(skill));
+  }
+  
+  // Also look for multi-line skills sections
+  const lines = text.split('\n');
+  let inSkillsSection = false;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim().toLowerCase();
+    
+    if (line.includes('skills') || line.includes('technologies')) {
+      inSkillsSection = true;
+      continue;
+    }
+    
+    if (inSkillsSection && (line.includes('experience') || line.includes('education') || line.includes('work'))) {
+      break;
+    }
+    
+    if (inSkillsSection && lines[i].trim()) {
+      const skillLine = lines[i].trim();
+      // Remove bullet points and split by delimiters
+      const cleanLine = skillLine.replace(/^[•◦\-\*\+]\s*/, '');
+      const lineSkills = cleanLine
+        .split(/[,\/\|\;]/)  // Split by comma, slash, pipe, semicolon
+        .map(s => s.trim())
+        .filter(s => s.length > 2 && s.length < 50 && !['and', 'etc', 'more'].includes(s.toLowerCase()));
+      
+      lineSkills.forEach(skill => skills.add(skill));
+    }
   }
   
   return Array.from(skills).slice(0, 15); // Limit to 15 skills
