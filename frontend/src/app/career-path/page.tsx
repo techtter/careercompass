@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/Textarea";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import SkillsWordCloud from "@/components/ui/SkillsWordCloud";
 import Link from "next/link";
-import ReactMarkdown from "react-markdown";
+import AnimatedCareerPath from "@/components/ui/AnimatedCareerPath";
 
 export default function CareerPathPage() {
     const { getToken, isLoaded, isSignedIn } = useAuth();
@@ -312,45 +312,7 @@ export default function CareerPathPage() {
                                 🎯 Your Personalized Career Path
                             </h3>
                             <div className="prose prose-lg max-w-none text-gray-800 dark:text-gray-200">
-                                <ReactMarkdown
-                                    components={{
-                                        h1: ({ node, ...props }) => (
-                                            <h1 className="text-3xl font-bold text-blue-900 dark:text-blue-100 mb-6 border-b-2 border-blue-200 dark:border-blue-800 pb-3" {...props} />
-                                        ),
-                                        h2: ({ node, ...props }) => (
-                                            <h2 className="text-2xl font-semibold text-blue-800 dark:text-blue-200 mb-4 mt-8" {...props} />
-                                        ),
-                                        h3: ({ node, ...props }) => (
-                                            <h3 className="text-xl font-semibold text-blue-700 dark:text-blue-300 mb-3 mt-6" {...props} />
-                                        ),
-                                        p: ({ node, ...props }) => (
-                                            <p className="mb-4 text-gray-700 dark:text-gray-300 leading-relaxed text-base" {...props} />
-                                        ),
-                                        ul: ({ node, ...props }) => (
-                                            <ul className="list-disc list-inside mb-4 space-y-2" {...props} />
-                                        ),
-                                        ol: ({ node, ...props }) => (
-                                            <ol className="list-decimal list-inside mb-4 space-y-2" {...props} />
-                                        ),
-                                        li: ({ node, ...props }) => (
-                                            <li className="text-gray-700 dark:text-gray-300 leading-relaxed" {...props} />
-                                        ),
-                                        strong: ({ node, ...props }) => (
-                                            <strong className="font-semibold text-gray-900 dark:text-gray-100" {...props} />
-                                        ),
-                                        em: ({ node, ...props }) => (
-                                            <em className="italic text-gray-600 dark:text-gray-400" {...props} />
-                                        ),
-                                        code: ({ node, ...props }) => (
-                                            <code className="bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 px-2 py-1 rounded text-sm font-mono" {...props} />
-                                        ),
-                                        blockquote: ({ node, ...props }) => (
-                                            <blockquote className="border-l-4 border-green-400 dark:border-green-600 pl-6 py-2 italic text-gray-600 dark:text-gray-400 my-6 bg-green-50 dark:bg-green-900/20" {...props} />
-                                        ),
-                                    }}
-                                >
-                                    {careerPath}
-                                </ReactMarkdown>
+                                <AnimatedCareerPath content={careerPath} />
                             </div>
                         </div>
                     )}

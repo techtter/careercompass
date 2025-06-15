@@ -101,7 +101,7 @@
  - Backend: Python (FastAPI)
  - AI : RESTful API calls to OpenAI, Deepseek AI, Gemini AI, Python ( LangChain, LangGraph, Model Context Protocol or A2A ), OpenAI API integration.
 - Database: Supabase.
-- Integrations: EURES Jobs API, LinkedIn API, Indeed, Jsearch api in and Active Jobs DB aoi from Rapid API platform, e-learning APIs (Coursera, Udemy and other job portals from Europe, UK and US.
+- Integrations with Job Portals: EURES Jobs API, LinkedIn API, Indeed, Jsearch api in and Active Jobs DB aoi from Rapid API platform, e-learning APIs (Coursera, Udemy and other job portals from Europe, UK and US.
 - DeepLearning.ai, Linkedin Learning), Email/SMS notifications.
 - Authentication: Google OAuth 2.0
 - Hosting: GCP, AWS, or Azure.
