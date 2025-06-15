@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth, useUser, SignOutButton } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
@@ -309,9 +309,78 @@ const processTextWithCourseLinks = (text: string) => {
     return processedText;
 };
 
+// Function to process text and convert specific sections to bullet points
+const processTextForBulletPoints = (text: string) => {
+    // Sections that should have sentences converted to bullet points
+    const sectionsToProcess = [
+        "1. PROFESSIONAL PROFILE ASSESSMENT",
+        "2. SKILL MATCH ANALYSIS", 
+        "4. EXPERIENCE & BACKGROUND ANALYSIS",
+        "6. CAREER STRATEGY RECOMMENDATIONS",
+        "8. MARKET INSIGHTS FOR YOUR PROFILE"
+    ];
+    
+    let processedText = text;
+    
+    sectionsToProcess.forEach(sectionTitle => {
+        // Find the section in the text
+        const sectionStart = processedText.indexOf(`## ${sectionTitle}`);
+        if (sectionStart === -1) return;
+        
+        // Find the next section (starts with ##)
+        const nextSectionMatch = processedText.substring(sectionStart + sectionTitle.length + 3).match(/\n## /);
+        const sectionEnd = nextSectionMatch && nextSectionMatch.index !== undefined
+            ? sectionStart + sectionTitle.length + 3 + nextSectionMatch.index
+            : processedText.length;
+        
+        // Extract the section content
+        const sectionContent = processedText.substring(sectionStart, sectionEnd);
+        
+        // Process the content to convert sentences to bullet points
+        const lines = sectionContent.split('\n');
+        const processedLines = lines.map(line => {
+            // Skip the section header, empty lines, already formatted lines, and sub-headers
+            if (line.startsWith('## ') || 
+                line.trim() === '' || 
+                line.startsWith('**') || 
+                line.startsWith('- ') || 
+                line.startsWith('* ') ||
+                line.includes(':**') ||
+                line.startsWith('#') ||
+                line.startsWith('###') ||
+                line.startsWith('####')) {
+                return line;
+            }
+            
+            // Only convert lines that look like descriptive sentences (not headers or special formatting)
+            if (line.trim() && 
+                line.length > 20 && // Only process substantial content
+                !line.match(/^\s*\*\*.*\*\*\s*$/) && // Skip bold-only lines
+                !line.includes('|') && // Skip table content
+                line.includes(' ')) { // Must contain spaces (actual sentences)
+                
+                // Split by sentence endings and create bullet points
+                const sentences = line.split(/(?<=[.!?])\s+/).filter(s => s.trim());
+                if (sentences.length > 1) {
+                    return sentences.map(sentence => `- ${sentence.trim()}`).join('\n');
+                } else if (line.trim().endsWith('.') || line.trim().endsWith('!') || line.trim().endsWith('?')) {
+                    return `- ${line.trim()}`;
+                }
+            }
+            
+            return line;
+        });
+        
+        const processedSection = processedLines.join('\n');
+        processedText = processedText.substring(0, sectionStart) + processedSection + processedText.substring(sectionEnd);
+    });
+    
+    return processedText;
+};
+
 // Enhanced ReactMarkdown component with course link processing
 const EnhancedMarkdown = ({ children }: { children: string }) => {
-    const processedContent = processTextWithCourseLinks(children);
+    const processedContent = processTextWithCourseLinks(processTextForBulletPoints(children));
     
     return (
         <ReactMarkdown
@@ -385,6 +454,9 @@ export default function SkillGapAnalysisPage() {
     const [skillGapAnalysis, setSkillGapAnalysis] = useState("");
     const [loadingSkillGap, setLoadingSkillGap] = useState(false);
     const [showAllSkills, setShowAllSkills] = useState(false);
+    
+    // Ref for auto-scrolling to response section
+    const responseRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (isLoaded && !isSignedIn) {
@@ -420,6 +492,16 @@ export default function SkillGapAnalysisPage() {
 
             const data = await response.json();
             setSkillGapAnalysis(data.analysis);
+            
+            // Auto-scroll to response section after analysis is complete
+            setTimeout(() => {
+                if (responseRef.current) {
+                    responseRef.current.scrollIntoView({ 
+                        behavior: 'smooth', 
+                        block: 'start' 
+                    });
+                }
+            }, 100);
         } catch (error) {
             console.error('Skill gap analysis error:', error);
             alert(`Failed to analyze skill gap: ${error instanceof Error ? error.message : 'Please try again.'}`);
@@ -445,24 +527,6 @@ export default function SkillGapAnalysisPage() {
                         <Link href="/dashboard" className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300">
                             ← Back to Dashboard
                         </Link>
-                        <div className="flex items-center space-x-3">
-                            {/* Beautiful Compass Logo */}
-                            <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-lg flex items-center justify-center shadow-lg">
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <circle cx="12" cy="12" r="10" stroke="white" strokeWidth="2" fill="none"/>
-                                    <path d="m9 12 2 2 4-4" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                                    <path d="M12 2v2" stroke="white" strokeWidth="2" strokeLinecap="round"/>
-                                    <path d="M12 20v2" stroke="white" strokeWidth="2" strokeLinecap="round"/>
-                                    <path d="M2 12h2" stroke="white" strokeWidth="2" strokeLinecap="round"/>
-                                    <path d="M20 12h2" stroke="white" strokeWidth="2" strokeLinecap="round"/>
-                                    <path d="M4.93 4.93l1.41 1.41" stroke="white" strokeWidth="2" strokeLinecap="round"/>
-                                    <path d="M17.66 17.66l1.41 1.41" stroke="white" strokeWidth="2" strokeLinecap="round"/>
-                                    <path d="M19.07 4.93l-1.41 1.41" stroke="white" strokeWidth="2" strokeLinecap="round"/>
-                                    <path d="M6.34 17.66l-1.41 1.41" stroke="white" strokeWidth="2" strokeLinecap="round"/>
-                                </svg>
-                            </div>
-                            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Skill Gap Analysis</h1>
-                        </div>
                     </div>
                     <div className="flex items-center space-x-4">
                         <span className="text-gray-600 dark:text-gray-300">Welcome, {user?.firstName || "User"}!</span>
@@ -496,12 +560,15 @@ export default function SkillGapAnalysisPage() {
                         <div className="flex items-center justify-between mb-4">
                             <div className="flex items-center space-x-3">
                                 <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-blue-600 rounded-lg flex items-center justify-center shadow-lg">
-                                    <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                        <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <circle cx="12" cy="12" r="10" strokeWidth="2"/>
+                                        <circle cx="12" cy="12" r="6" strokeWidth="2"/>
+                                        <circle cx="12" cy="12" r="2" strokeWidth="2"/>
+                                        <path d="M12 2v4M12 18v4M2 12h4M18 12h4" strokeWidth="2"/>
                                     </svg>
                                 </div>
                                 <div>
-                                    <h2 className="text-2xl font-bold text-purple-900 dark:text-purple-100">🤖 AI-Powered Skill Gap Analysis</h2>
+                                    <h2 className="text-2xl font-bold text-purple-900 dark:text-purple-100">AI-Powered Skill Gap Analysis</h2>
                                     <p className="text-purple-700 dark:text-purple-300 text-sm">Let AI guide you to your dream job</p>
                                 </div>
                             </div>
@@ -723,7 +790,7 @@ export default function SkillGapAnalysisPage() {
                     </form>
 
                     {skillGapAnalysis && (
-                        <div className="mt-8 space-y-6">
+                        <div ref={responseRef} className="mt-8 space-y-6">
                             {/* AI Success Banner */}
                             <div className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl p-6 text-white shadow-lg">
                                 <div className="flex items-center justify-between">

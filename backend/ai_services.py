@@ -66,10 +66,18 @@ else:
 # Initialize OpenAI LLM only if we have a real API key
 if not is_development_mode:
     try:
-        llm = ChatOpenAI(temperature=0.7, model="gpt-4")
+        # Initialize ChatOpenAI with proper parameters
+        llm = ChatOpenAI(
+            temperature=0.7, 
+            model="gpt-4",
+            openai_api_key=openai_api_key
+        )
+        print("✅ OpenAI LLM initialized successfully")
     except Exception as e:
         print(f"Warning: Could not initialize OpenAI LLM: {e}")
+        print("Falling back to development mode for AI services")
         llm = None
+        is_development_mode = True
 else:
     llm = None
     if has_claude_api:
@@ -1623,7 +1631,7 @@ def analyze_skill_gap(skills: list[str], job_description: str, target_role: str 
         return _get_enhanced_mock_skill_gap(skills, job_description, target_role)
 
 def _get_comprehensive_mock_skill_gap(user_profile: dict, job_description: str, target_role: str = None):
-    """Return comprehensive mock skill gap analysis based on complete user profile"""
+    """Return comprehensive mock skill gap analysis based on complete user profile and actual job description analysis"""
     skills = user_profile.get("skills", [])
     experience_years = user_profile.get("experience_years", 0)
     job_titles = user_profile.get("job_titles", [])
@@ -1640,6 +1648,81 @@ def _get_comprehensive_mock_skill_gap(user_profile: dict, job_description: str, 
     
     experience_level = "Senior" if experience_years >= 5 else "Mid-level" if experience_years >= 2 else "Junior"
     
+    # Analyze job description for specific requirements
+    job_desc_lower = job_description.lower() if job_description else ""
+    
+    # Extract key technologies and skills from job description
+    tech_keywords = {
+        'cloud': ['aws', 'azure', 'gcp', 'google cloud', 'amazon web services', 'microsoft azure'],
+        'containers': ['docker', 'kubernetes', 'k8s', 'container', 'containerization'],
+        'devops': ['devops', 'ci/cd', 'jenkins', 'gitlab', 'github actions', 'terraform'],
+        'databases': ['sql', 'postgresql', 'mysql', 'mongodb', 'redis', 'elasticsearch'],
+        'programming': ['python', 'java', 'javascript', 'typescript', 'go', 'rust', 'scala'],
+        'frameworks': ['react', 'angular', 'vue', 'spring', 'django', 'flask', 'express'],
+        'data': ['spark', 'hadoop', 'kafka', 'airflow', 'snowflake', 'databricks'],
+        'ml_ai': ['machine learning', 'artificial intelligence', 'tensorflow', 'pytorch', 'scikit-learn'],
+        'security': ['security', 'authentication', 'authorization', 'oauth', 'jwt', 'encryption'],
+        'architecture': ['microservices', 'api', 'rest', 'graphql', 'system design', 'architecture']
+    }
+    
+    required_skills = []
+    missing_skills = []
+    matching_skills = []
+    
+    # Analyze what skills are required vs what user has
+    user_skills_lower = [skill.lower() for skill in skills] if skills else []
+    
+    for category, keywords in tech_keywords.items():
+        for keyword in keywords:
+            if keyword in job_desc_lower:
+                required_skills.append(keyword.title())
+                # Check if user has this skill
+                if any(keyword in user_skill for user_skill in user_skills_lower):
+                    matching_skills.append(keyword.title())
+                else:
+                    missing_skills.append(keyword.title())
+    
+    # Remove duplicates and limit
+    required_skills = list(set(required_skills))[:10]
+    missing_skills = list(set(missing_skills))[:8]
+    matching_skills = list(set(matching_skills))[:8]
+    
+    # Determine specific learning recommendations based on missing skills
+    specific_courses = []
+    if any('aws' in skill.lower() for skill in missing_skills):
+        specific_courses.extend([
+            '**"AWS Certified Solutions Architect" by Amazon Web Services** - Essential for cloud architecture',
+            '**"AWS Developer Associate" by A Cloud Guru** - Hands-on AWS development skills'
+        ])
+    
+    if any('kubernetes' in skill.lower() or 'docker' in skill.lower() for skill in missing_skills):
+        specific_courses.extend([
+            '**"Docker and Kubernetes Complete Guide" by Stephen Grider** - Container orchestration mastery',
+            '**"Certified Kubernetes Administrator (CKA)" by Linux Foundation** - Industry-standard certification'
+        ])
+    
+    if any('python' in skill.lower() for skill in missing_skills):
+        specific_courses.extend([
+            '**"Complete Python Developer" by Andrei Neagoie** - Advanced Python programming',
+            '**"Python for Data Science" by IBM** - Data analysis and machine learning'
+        ])
+    
+    if any('react' in skill.lower() or 'javascript' in skill.lower() for skill in missing_skills):
+        specific_courses.extend([
+            '**"React - The Complete Guide" by Maximilian Schwarzmüller** - Modern React development',
+            '**"JavaScript Algorithms and Data Structures" by freeCodeCamp** - Advanced JS concepts'
+        ])
+    
+    # Default courses if no specific matches
+    if not specific_courses:
+        specific_courses = [
+            '**"System Design Interview" by Exponent** - Architecture and scalability',
+            '**"Complete DevOps Engineer" by Mumshad Mannambeth** - End-to-end DevOps skills'
+        ]
+    
+    # Calculate fit score based on matching vs required skills
+    fit_score = min(10, max(1, int((len(matching_skills) / max(len(required_skills), 1)) * 10))) if required_skills else 8
+    
     return f"""# 🎯 Comprehensive Professional Skill Gap Analysis{role_context}
 
 ## 1. PROFESSIONAL PROFILE ASSESSMENT
@@ -1651,23 +1734,18 @@ def _get_comprehensive_mock_skill_gap(user_profile: dict, job_description: str, 
 
 ## 2. SKILL MATCH ANALYSIS
 
-**Strong Matching Skills:** {user_skills_str}
+**Strong Matching Skills:** {', '.join(matching_skills) if matching_skills else 'Core technical foundation'}
 **Transferable Skills:** Project management, problem-solving, team collaboration from your {job_titles_str} experience
 **Experience Relevance:** Your background at {companies_str} provides excellent foundation for this role
-**Overall Fit Score:** 8/10 - Strong candidate with targeted skill development needed
+**Overall Fit Score:** {fit_score}/10 - {"Excellent match" if fit_score >= 8 else "Good match with targeted development needed" if fit_score >= 6 else "Strong potential with focused skill development required"}
 
-## 3. CRITICAL SKILL GAPS
+## 3. CRITICAL SKILL GAPS (Based on Job Description Analysis)
 
 ### High Priority (Missing Technical Skills):
-- **Advanced Cloud Architecture** (AWS/Azure/GCP) - Essential for scalable systems
-- **DevOps & CI/CD Pipelines** - Critical for modern development workflows  
-- **System Design & Microservices** - Required for {experience_level} level positions
-- **Container Orchestration** (Kubernetes/Docker) - Industry standard deployment
+{chr(10).join(f"- **{skill}** - Required for this specific role" for skill in missing_skills[:4]) if missing_skills else "- **Advanced System Design** - Essential for senior roles"}
 
-### Medium Priority (Missing Certifications):
-- **Cloud Certifications** - AWS Solutions Architect, Azure Developer Associate
-- **Security Certifications** - CompTIA Security+, CISSP for enterprise roles
-- **Project Management** - PMP, Agile certifications for leadership growth
+### Medium Priority (Additional Requirements):
+{chr(10).join(f"- **{skill}** - Beneficial for role success" for skill in missing_skills[4:8]) if len(missing_skills) > 4 else "- **Leadership & Communication** - Important for career growth"}
 
 ### Experience Gaps:
 - **Large-scale System Design** - Architecture for high-traffic applications
@@ -1681,34 +1759,26 @@ def _get_comprehensive_mock_skill_gap(user_profile: dict, job_description: str, 
 **Seniority Alignment:** {experience_years} years experience matches {experience_level} level expectations
 **Geographic Considerations:** Location and remote work capabilities support opportunity
 
-## 5. TARGETED LEARNING RECOMMENDATIONS
+## 5. TARGETED LEARNING RECOMMENDATIONS (Based on Specific Job Requirements)
 
-### 🎯 Priority Learning Path (Based on Your {experience_years}-Year Profile):
+### 🎯 Priority Learning Path (Tailored to Job Description):
 
 #### Immediate Focus (1-3 months):
-**For your {experience_level} experience level:**
+**Critical skills identified from job posting:**
 
 ##### Coursera:
-- **"AWS Fundamentals Specialization" by Amazon Web Services** - Builds on your {user_skills_str} background
-- **"Google Cloud Architecture" by Google Cloud** - Advanced cloud concepts for experienced professionals
-- **"System Design Interview" by University of California San Diego** - Perfect for your career level
-- **"DevOps Culture and Mindset" by University of California Davis** - Leadership skills for {experience_level} professionals
+{chr(10).join(f"- {course}" for course in specific_courses[:2])}
 
 ##### Udemy:
-- **"AWS Certified Solutions Architect Professional" by Stephane Maarek** - Advanced level for {experience_years}+ years experience
-- **"Docker and Kubernetes: The Complete Guide" by Stephen Grider** - Hands-on approach for professionals
-- **"Microservices with Node JS and React" by Stephen Grider** - Practical architecture for experienced developers
-- **"System Design Interview Guide" by Frank Kane** - Interview prep for {experience_level} roles
+{chr(10).join(f"- {course}" for course in specific_courses[2:4]) if len(specific_courses) > 2 else "- **Complete Web Developer Bootcamp** by Angela Yu - Full-stack development"}
 
 ##### Pluralsight:
 - **"Cloud Architecture Learning Path" by Pluralsight** - Structured progression for your level
 - **"DevOps Engineer Learning Path" by Pluralsight** - Building on your existing foundation
-- **"Software Architecture Learning Path" by Pluralsight** - Advanced design patterns for experienced developers
 
 ##### LinkedIn Learning:
 - **"Strategic Thinking" by LinkedIn Learning** - Ideal for your career stage
 - **"Leading Technical Teams" by LinkedIn Learning** - Management skills for {experience_level} professionals
-- **"Enterprise Architecture Foundations" by LinkedIn Learning** - Business alignment for technical leaders
 
 ##### DeepLearning.ai:
 - **"MLOps Specialization" by DeepLearning.ai** - Technical depth for experienced professionals
@@ -1756,13 +1826,13 @@ def _get_comprehensive_mock_skill_gap(user_profile: dict, job_description: str, 
 ## 7. TIMELINE & ACTION PLAN
 
 **Immediate Actions (Week 1-2):**
-- Start AWS/Cloud fundamentals course to address immediate technical gaps
+- Start {missing_skills[0] if missing_skills else "cloud architecture"} course to address immediate technical gaps
 - Update LinkedIn profile highlighting {user_skills_str} and {job_titles_str} experience
 - Begin system design practice for interview preparation
 
 **Short-term Goals (1-3 months):**
-- Complete cloud architecture certification (AWS/Azure/GCP)
-- Gain hands-on experience with Kubernetes and containerization
+- Complete {missing_skills[0] if missing_skills else "cloud architecture"} certification
+- Gain hands-on experience with {missing_skills[1] if len(missing_skills) > 1 else "containerization"}
 - Practice system design interviews and technical leadership scenarios
 
 **Medium-term Development (3-6 months):**
@@ -1786,14 +1856,14 @@ def _get_comprehensive_mock_skill_gap(user_profile: dict, job_description: str, 
 
 Based on your {experience_years} years of experience and background at {companies_str}, you're well-positioned for {target_role or "your target role"}. Focus on:
 
-1. **Immediate Impact:** Cloud architecture skills will make you immediately more competitive
+1. **Immediate Impact:** {missing_skills[0] if missing_skills else "Cloud architecture"} skills will make you immediately more competitive
 2. **Leadership Development:** Your experience level calls for technical leadership capabilities  
 3. **System Thinking:** Advanced architecture knowledge will set you apart from other candidates
 4. **Continuous Learning:** Stay current with emerging technologies while deepening core expertise
 
 **Remember:** Your proven track record at {companies_str} combined with targeted skill development puts you on a strong path to securing {target_role or "your dream role"}. The key is systematic skill building while leveraging your existing strengths.
 
-🎯 **Next Step:** Start with the AWS/Cloud fundamentals course this week - it's the highest-impact skill for your profile and career goals!"""
+🎯 **Next Step:** Start with the {missing_skills[0] if missing_skills else "cloud fundamentals"} course this week - it's the highest-impact skill for your profile and career goals!"""
 
 def _get_enhanced_mock_skill_gap(skills: list[str], job_description: str, target_role: str = None):
     """Return enhanced mock skill gap analysis aligned with PRD requirements"""
