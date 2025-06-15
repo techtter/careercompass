@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/Label";
 import { Textarea } from "@/components/ui/Textarea";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import SkillsWordCloud from "@/components/ui/SkillsWordCloud";
+import { useUserProfile } from "@/contexts/UserProfileContext";
 import Link from "next/link";
 import AnimatedCareerPath from "@/components/ui/AnimatedCareerPath";
 
@@ -16,6 +17,7 @@ export default function CareerPathPage() {
     const { getToken, isLoaded, isSignedIn } = useAuth();
     const { user } = useUser();
     const router = useRouter();
+    const { userProfile: contextUserProfile } = useUserProfile();
     
     // State for Career Path
     const [jobTitle, setJobTitle] = useState("");
@@ -38,6 +40,29 @@ export default function CareerPathPage() {
     useEffect(() => {
         const loadCVData = async () => {
             if (!user?.id) return;
+            
+            // First check if we have profile from context
+            if (contextUserProfile && contextUserProfile.skills?.length > 0) {
+                console.log('Using profile from context for career path:', contextUserProfile);
+                
+                // Pre-fill form with context data
+                if (contextUserProfile.lastThreeJobTitles && contextUserProfile.lastThreeJobTitles.length > 0) {
+                    setJobTitle(contextUserProfile.lastThreeJobTitles[0]);
+                }
+                
+                if (contextUserProfile.experienceYears) {
+                    setExperience(`${contextUserProfile.experienceYears} years of experience`);
+                } else if (contextUserProfile.experience) {
+                    setExperience(contextUserProfile.experience);
+                }
+                
+                if (contextUserProfile.skills && Array.isArray(contextUserProfile.skills)) {
+                    setSkills(contextUserProfile.skills.join(", "));
+                }
+                
+                setIsLoadingCV(false);
+                return;
+            }
             
             setIsLoadingCV(true);
             try {
@@ -89,7 +114,7 @@ export default function CareerPathPage() {
         if (isLoaded && isSignedIn && user?.id) {
             loadCVData();
         }
-    }, [isLoaded, isSignedIn, user?.id, getToken]);
+    }, [isLoaded, isSignedIn, user?.id, getToken, contextUserProfile]);
 
     const handleCareerPathSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -149,8 +174,24 @@ export default function CareerPathPage() {
             <header className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
                 <div className="container mx-auto px-4 py-4 flex justify-between items-center">
                     <div className="flex items-center space-x-4">
-                        <Link href="/dashboard" className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300">
-                            ← Back to Dashboard
+                        <Link href="/dashboard">
+                            <Button variant="outline" size="sm" className="flex items-center space-x-2 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300">
+                                <svg 
+                                    className="w-4 h-4" 
+                                    fill="none" 
+                                    stroke="currentColor" 
+                                    viewBox="0 0 24 24" 
+                                    xmlns="http://www.w3.org/2000/svg"
+                                >
+                                    <path 
+                                        strokeLinecap="round" 
+                                        strokeLinejoin="round" 
+                                        strokeWidth={2} 
+                                        d="M10 19l-7-7m0 0l7-7m-7 7h18" 
+                                    />
+                                </svg>
+                                <span>Back to Dashboard</span>
+                            </Button>
                         </Link>
                         <div className="flex items-center space-x-3">
                             {/* Beautiful Compass Logo */}

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import CompanyMarquee from "@/components/ui/CompanyMarquee";
+import HeroSection from "@/components/ui/HeroSection";
 
 export default function HomePage() {
   return (
@@ -70,33 +71,7 @@ export default function HomePage() {
       </header>
 
       {/* Hero Section */}
-      <section className="bg-gray-50 dark:bg-gray-800 pt-20 pb-2">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          {/* Badge */}
-          <div className="inline-flex items-center px-4 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-full text-sm font-medium text-gray-700 dark:text-gray-300 mb-8 shadow-sm">
-            🚀 New: AI-Powered Career Planning
-          </div>
-
-          {/* Main Heading */}
-          <h1 className="text-5xl md:text-6xl font-bold text-gray-900 dark:text-white mb-6">
-            Navigate Your Career with{" "}
-            <span className="animate-ai-guidance">AI Guidance</span>
-          </h1>
-
-          {/* Subtitle */}
-          <p className="text-xl text-gray-600 dark:text-gray-300 mb-10 max-w-3xl mx-auto leading-relaxed">
-            Get personalized career paths, skill recommendations, and job matching powered by advanced AI. 
-            Your professional growth journey starts here.
-          </p>
-
-          {/* CTA Buttons */}
-          <div className="flex flex-col sm:flex-row gap-4 justify-center mb-2">
-            <Link href="/signup">
-              <Button size="lg">Start Your Journey</Button>
-            </Link>
-          </div>
-        </div>
-      </section>
+      <HeroSection />
 
       {/* Company Logos Marquee */}
       <CompanyMarquee />

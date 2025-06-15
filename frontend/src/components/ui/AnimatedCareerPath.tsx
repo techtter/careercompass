@@ -116,29 +116,62 @@ export default function AnimatedCareerPath({ content }: AnimatedCareerPathProps)
                     <div className="relative flex items-center justify-center p-8 my-6 bg-gradient-to-r from-blue-500/5 via-purple-500/5 to-blue-500/5 rounded-xl shadow-lg overflow-hidden">
                       {/* Neural Network Background Animation */}
                       <div className="absolute inset-0 w-full h-full">
-                        <div className="absolute w-2 h-2 bg-blue-500 rounded-full animate-ping" style={{ top: '20%', left: '20%' }}></div>
-                        <div className="absolute w-2 h-2 bg-purple-500 rounded-full animate-ping" style={{ top: '60%', left: '40%', animationDelay: '0.5s' }}></div>
-                        <div className="absolute w-2 h-2 bg-indigo-500 rounded-full animate-ping" style={{ top: '30%', left: '70%', animationDelay: '1s' }}></div>
-                        <div className="absolute w-2 h-2 bg-blue-400 rounded-full animate-ping" style={{ top: '70%', left: '80%', animationDelay: '1.5s' }}></div>
+                        {/* Neural Network Nodes */}
+                        {Array.from({ length: 12 }).map((_, i) => (
+                          <div
+                            key={i}
+                            className="absolute w-2 h-2 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full animate-ping"
+                            style={{
+                              top: `${Math.random() * 100}%`,
+                              left: `${Math.random() * 100}%`,
+                              animationDelay: `${i * 0.2}s`,
+                              animationDuration: '3s'
+                            }}
+                          />
+                        ))}
                         {/* Neural Network Lines */}
-                        <div className="absolute h-px bg-gradient-to-r from-blue-500/50 to-purple-500/50 w-full top-1/4 animate-pulse"></div>
-                        <div className="absolute h-px bg-gradient-to-r from-purple-500/50 to-blue-500/50 w-full top-2/4 animate-pulse delay-300"></div>
-                        <div className="absolute h-px bg-gradient-to-r from-blue-500/50 to-purple-500/50 w-full top-3/4 animate-pulse delay-700"></div>
+                        {Array.from({ length: 6 }).map((_, i) => (
+                          <div
+                            key={`line-${i}`}
+                            className="absolute h-px bg-gradient-to-r from-blue-500/30 via-purple-500/30 to-blue-500/30 w-full animate-pulse"
+                            style={{
+                              top: `${(i + 1) * 15}%`,
+                              transform: `rotate(${i * 30}deg)`,
+                              animationDelay: `${i * 0.3}s`
+                            }}
+                          />
+                        ))}
                       </div>
 
                       {/* Central AI Brain Animation */}
                       <div className="relative z-10 flex items-center space-x-6">
                         <div className="relative">
-                          {/* Outer Ring */}
-                          <div className="absolute inset-0 border-4 border-blue-500/30 rounded-full animate-spin-slow"></div>
-                          {/* Middle Ring */}
-                          <div className="absolute inset-2 border-4 border-purple-500/30 rounded-full animate-reverse-spin"></div>
-                          {/* Inner Circle with Gradient */}
-                          <div className="relative w-16 h-16 rounded-full bg-gradient-to-br from-blue-600 via-purple-600 to-blue-600 animate-pulse p-1">
-                            <div className="absolute inset-1 bg-white/10 rounded-full backdrop-blur-sm"></div>
-                            {/* Synapses */}
-                            <div className="absolute inset-0 flex items-center justify-center">
-                              <div className="w-1 h-1 bg-white rounded-full animate-ping"></div>
+                          {/* Multiple Rotating Rings */}
+                          {Array.from({ length: 3 }).map((_, i) => (
+                            <div
+                              key={`ring-${i}`}
+                              className={`absolute inset-${i} border-4 rounded-full ${i % 2 === 0 ? 'animate-spin-slow' : 'animate-reverse-spin'}`}
+                              style={{
+                                borderColor: `rgba(${i === 0 ? '59, 130, 246' : i === 1 ? '147, 51, 234' : '79, 70, 229'}, 0.3)`,
+                                animationDuration: `${4 + i}s`
+                              }}
+                            />
+                          ))}
+                          {/* Brain Core */}
+                          <div className="relative w-20 h-20 rounded-full bg-gradient-to-br from-blue-600 via-purple-600 to-blue-600 animate-pulse p-1">
+                            <div className="absolute inset-1 bg-white/10 rounded-full backdrop-blur-sm">
+                              {/* Synapses */}
+                              {Array.from({ length: 4 }).map((_, i) => (
+                                <div
+                                  key={`synapse-${i}`}
+                                  className="absolute w-1 h-1 bg-white rounded-full animate-ping"
+                                  style={{
+                                    top: `${25 + (i * 15)}%`,
+                                    left: `${25 + (i * 15)}%`,
+                                    animationDelay: `${i * 0.3}s`
+                                  }}
+                                />
+                              ))}
                             </div>
                           </div>
                         </div>
@@ -153,6 +186,10 @@ export default function AnimatedCareerPath({ content }: AnimatedCareerPathProps)
                               1500,
                               'Mapping your professional journey...',
                               1500,
+                              'Creating tailored recommendations...',
+                              1500,
+                              'Optimizing career trajectory...',
+                              1500
                             ]}
                             wrapper="p"
                             speed={50}

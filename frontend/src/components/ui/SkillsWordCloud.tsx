@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 
 interface SkillsWordCloudProps {
   skills: string[];
@@ -8,6 +8,9 @@ interface SkillsWordCloudProps {
 }
 
 const SkillsWordCloud: React.FC<SkillsWordCloudProps> = ({ skills, className = "" }) => {
+  const [showAllSkills, setShowAllSkills] = useState(false);
+  const SKILLS_LIMIT = 50;
+
   // Process and clean skills
   const processedSkills = useMemo(() => {
     if (skills.length === 0) return [];
@@ -26,6 +29,16 @@ const SkillsWordCloud: React.FC<SkillsWordCloudProps> = ({ skills, className = "
     // Remove duplicates and empty skills
     return [...new Set(cleanedSkills)].filter(skill => skill.length > 0);
   }, [skills]);
+
+  // Determine which skills to display
+  const displayedSkills = useMemo(() => {
+    if (showAllSkills || processedSkills.length <= SKILLS_LIMIT) {
+      return processedSkills;
+    }
+    return processedSkills.slice(0, SKILLS_LIMIT);
+  }, [processedSkills, showAllSkills]);
+
+  const hasMoreSkills = processedSkills.length > SKILLS_LIMIT;
 
   // Color themes for skill categories
   const skillStyles = [
@@ -47,12 +60,11 @@ const SkillsWordCloud: React.FC<SkillsWordCloudProps> = ({ skills, className = "
     );
   }
 
-      return (
-      <div className={`w-full ${className}`}>
-
+  return (
+    <div className={`w-full ${className}`}>
       {/* Responsive skill grid */}
       <div className="flex flex-wrap gap-2">
-        {processedSkills.map((skill, index) => (
+        {displayedSkills.map((skill, index) => (
           <div
             key={`${skill}-${index}`}
             className={`
@@ -66,22 +78,72 @@ const SkillsWordCloud: React.FC<SkillsWordCloudProps> = ({ skills, className = "
             {skill}
           </div>
         ))}
+        
+        {/* More button */}
+        {hasMoreSkills && !showAllSkills && (
+          <button
+            onClick={() => setShowAllSkills(true)}
+            className="px-3 py-2 rounded-lg border text-sm font-medium
+                     bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 
+                     border-gray-300 dark:border-gray-600
+                     hover:bg-gray-200 dark:hover:bg-gray-700 hover:shadow-md 
+                     transition-all duration-200 hover:scale-105
+                     cursor-pointer select-none flex items-center space-x-1"
+            title={`Show ${processedSkills.length - SKILLS_LIMIT} more skills`}
+          >
+            <span>More</span>
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+        )}
+        
+        {/* Show Less button */}
+        {hasMoreSkills && showAllSkills && (
+          <button
+            onClick={() => setShowAllSkills(false)}
+            className="px-3 py-2 rounded-lg border text-sm font-medium
+                     bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 
+                     border-gray-300 dark:border-gray-600
+                     hover:bg-gray-200 dark:hover:bg-gray-700 hover:shadow-md 
+                     transition-all duration-200 hover:scale-105
+                     cursor-pointer select-none flex items-center space-x-1"
+            title="Show fewer skills"
+          >
+            <span>Show Less</span>
+            <svg className="w-3 h-3 transform rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+        )}
       </div>
 
-      {/* Simple stats footer */}
+      {/* Skills count and stats footer */}
       <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
-        <div className="flex items-center justify-center space-x-6 text-sm text-gray-600 dark:text-gray-400">
-          <div className="flex items-center space-x-2">
-            <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-            <span>Technical</span>
+        <div className="flex items-center justify-between">
+          {/* Skills count */}
+          <div className="text-sm text-gray-600 dark:text-gray-400">
+            {showAllSkills || !hasMoreSkills ? (
+              <span>Total: {processedSkills.length} skills</span>
+            ) : (
+              <span>Showing {SKILLS_LIMIT} of {processedSkills.length} skills</span>
+            )}
           </div>
-          <div className="flex items-center space-x-2">
-            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-            <span>Frameworks</span>
-          </div>
-          <div className="flex items-center space-x-2">
-            <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
-            <span>Tools</span>
+          
+          {/* Category indicators */}
+          <div className="flex items-center space-x-6 text-sm text-gray-600 dark:text-gray-400">
+            <div className="flex items-center space-x-2">
+              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+              <span>Technical</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+              <span>Frameworks</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+              <span>Tools</span>
+            </div>
           </div>
         </div>
       </div>

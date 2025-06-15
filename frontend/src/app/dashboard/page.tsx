@@ -9,7 +9,14 @@ import { Label } from "@/components/ui/Label";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import Link from "next/link";
 import SkillsWordCloud from "@/components/ui/SkillsWordCloud";
+import WelcomeSection from "@/components/ui/WelcomeSection";
 import { getCachedJobs, cacheJobs, shouldRefreshJobCache, refreshUserJobCache } from '@/utils/jobCache';
+import { useUserProfile } from "@/contexts/UserProfileContext";
+import dynamic from 'next/dynamic';
+
+const CardBackgroundAnimation = dynamic(() => import('@/components/ui/CardBackgroundAnimation'), {
+  ssr: false
+});
 
 // Add Clerk type declaration for TypeScript
 declare global {
@@ -58,6 +65,7 @@ export default function Dashboard() {
     const { getToken, isLoaded, isSignedIn } = useAuth();
     const { user } = useUser();
     const router = useRouter();
+    const { userProfile: contextUserProfile, updateProfile, refreshProfile } = useUserProfile();
     
     // State management
     const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -111,6 +119,51 @@ export default function Dashboard() {
                     return;
                 }
 
+                // First check if we have profile from context
+                if (contextUserProfile && contextUserProfile.skills?.length > 0) {
+                    console.log('Using profile from context:', contextUserProfile);
+                    // Convert context profile to dashboard profile format
+                    const dashboardProfile: UserProfile = {
+                        firstName: contextUserProfile.firstName,
+                        lastName: contextUserProfile.lastName,
+                        email: contextUserProfile.email,
+                        phone: null,
+                        location: contextUserProfile.location,
+                        experienceYears: contextUserProfile.experienceYears,
+                        skills: contextUserProfile.skills,
+                        lastThreeJobTitles: contextUserProfile.lastThreeJobTitles,
+                        experienceSummary: contextUserProfile.experience || '',
+                        companies: [],
+                        education: contextUserProfile.education,
+                        certifications: contextUserProfile.certifications,
+                        raw_text: null
+                    };
+                    setUserProfile(dashboardProfile);
+                    setIsExistingUser(true);
+                    setShowFileUpload(false);
+                    
+                    // Still fetch job recommendations and CV metadata from backend
+                    try {
+                        const response = await fetch(`/api/user-profile/${userId}`);
+                        if (response.ok) {
+                            const data = await response.json();
+                            if (data.job_recommendations) {
+                                setJobRecommendations(data.job_recommendations);
+                            }
+                            if (data.cv_record_id) {
+                                setSavedCvId(data.cv_record_id);
+                                setLastUpdated(data.last_updated);
+                                setParseSuccessMessage(data.message);
+                            }
+                        }
+                    } catch (error) {
+                        console.log('Could not fetch additional data from backend');
+                    }
+                    
+                    setIsLoadingProfile(false);
+                    return;
+                }
+
                 console.log('Fetching profile for user:', userId);
 
                 // Call the user profile API
@@ -132,6 +185,9 @@ export default function Dashboard() {
                     setShowFileUpload(false);
                     setParseSuccessMessage(data.message);
                     
+                    // Update context with the fetched profile
+                    updateProfile(data.user_profile);
+                    
                     // Save to localStorage for jobs page
                     localStorage.setItem('userProfile', JSON.stringify(data.user_profile));
                 } else {
@@ -151,7 +207,7 @@ export default function Dashboard() {
         };
 
         fetchUserProfile();
-    }, [isLoaded, isSignedIn, user?.id]);
+    }, [isLoaded, isSignedIn, user?.id, contextUserProfile]);
 
     // Handle file upload and automatic parsing
     const handleFileUploadAndParse = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -215,10 +271,16 @@ export default function Dashboard() {
 
             // Set the parsed data and store original CV text
             setParsedResumeData(result.parsed_data);
+            setUserProfile(result.parsed_data); // Update userProfile to show the profile section
             setOriginalCvText(result.file_info?.raw_text || ''); // Store original CV text
             
             // Save to localStorage for jobs page
             localStorage.setItem('userProfile', JSON.stringify(result.parsed_data));
+            
+            // Update UI state to show profile and hide upload
+            setIsExistingUser(true);
+            setShowFileUpload(false);
+            setShowProfileSection(true);
             
             setParsingProgress(100);
             setParsingStep("Complete!");
@@ -228,6 +290,14 @@ export default function Dashboard() {
             
             // Fetch job recommendations after successful resume parsing
             await fetchJobRecommendations(result.parsed_data);
+            
+            // Save the CV data to backend
+            try {
+                await handleSaveCV();
+            } catch (saveError) {
+                console.error('Error saving CV:', saveError);
+                // Don't fail the whole process if save fails
+            }
             
             // Clear progress after a short delay
             setTimeout(() => {
@@ -516,7 +586,8 @@ export default function Dashboard() {
 
     // Save CV to database
     const handleSaveCV = async () => {
-        if (!parsedResumeData) return;
+        const profileData = parsedResumeData || userProfile;
+        if (!profileData) return;
 
         setIsSavingProfile(true);
         setParseSuccessMessage("");
@@ -534,8 +605,8 @@ export default function Dashboard() {
                     user_id: user?.id || 'user_1',
                     filename: uploadedFile?.name || 'profile_data.txt',
                     file_type: uploadedFile?.type || 'text/plain',
-                    raw_text: originalCvText || `${parsedResumeData.firstName} ${parsedResumeData.lastName}\n${parsedResumeData.email || ''}\n\nExperience: ${parsedResumeData.experienceYears} years\n\nSkills: ${parsedResumeData.skills.join(', ')}\n\nEducation: ${parsedResumeData.education.join(', ')}\n\nSummary: ${parsedResumeData.experienceSummary}`,
-                    parsed_data: parsedResumeData,
+                    raw_text: originalCvText || `${profileData.firstName} ${profileData.lastName}\n${profileData.email || ''}\n\nExperience: ${profileData.experienceYears} years\n\nSkills: ${profileData.skills.join(', ')}\n\nEducation: ${profileData.education.join(', ')}\n\nSummary: ${profileData.experienceSummary}`,
+                    parsed_data: profileData,
                 }),
             });
 
@@ -545,10 +616,7 @@ export default function Dashboard() {
 
             const result = await response.json();
             
-            // After successful save, move parsed data to user profile and mark as existing user
-            setUserProfile(parsedResumeData);
-            setParsedResumeData(null);
-            setIsExistingUser(true);
+            // After successful save, update state
             setSavedCvId(result.cv_record_id);
             setLastUpdated(new Date().toISOString());
             setParseSuccessMessage('✅ Profile saved successfully! Welcome to Career Compass AI!');
@@ -572,37 +640,13 @@ export default function Dashboard() {
     // Show loading state while checking user profile
     if (isLoadingProfile) {
         return (
-            <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-                <header className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
-                    <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-                        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Career Compass AI</h1>
-                        <div className="flex items-center space-x-4">
-                            <ThemeToggle />
-                            <SignOutButton>
-                                <Button variant="outline" size="sm" className="p-3 rounded-full w-11 h-11 flex items-center justify-center" title="Sign Out">
-                                    <svg
-                                        className="w-5 h-5"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        viewBox="0 0 24 24"
-                                        xmlns="http://www.w3.org/2000/svg"
-                                    >
-                                        <path
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            strokeWidth={2}
-                                            d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-                                        />
-                                    </svg>
-                                </Button>
-                            </SignOutButton>
+            <div className="min-h-screen bg-white dark:bg-gray-900">
+                <div className="container mx-auto px-4 py-8">
+                    <div className="flex items-center justify-center min-h-96">
+                        <div className="text-center">
+                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                            <div className="text-lg text-gray-600 dark:text-gray-300">Loading your profile...</div>
                         </div>
-                    </div>
-                </header>
-                <div className="flex items-center justify-center min-h-96">
-                    <div className="text-center">
-                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                        <div className="text-lg text-gray-600 dark:text-gray-300">Loading your profile...</div>
                     </div>
                 </div>
             </div>
@@ -610,1045 +654,571 @@ export default function Dashboard() {
     }
 
     return (
-        <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-            {/* Header */}
-            <header className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
-                <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-                    <div className="flex items-center space-x-3">
-                        {/* Beautiful Compass Logo */}
-                        <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-xl flex items-center justify-center shadow-lg">
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <circle cx="12" cy="12" r="10" stroke="white" strokeWidth="2" fill="none"/>
-                                <path d="m9 12 2 2 4-4" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                                <path d="M12 2v2" stroke="white" strokeWidth="2" strokeLinecap="round"/>
-                                <path d="M12 20v2" stroke="white" strokeWidth="2" strokeLinecap="round"/>
-                                <path d="M2 12h2" stroke="white" strokeWidth="2" strokeLinecap="round"/>
-                                <path d="M20 12h2" stroke="white" strokeWidth="2" strokeLinecap="round"/>
-                                <path d="M4.93 4.93l1.41 1.41" stroke="white" strokeWidth="2" strokeLinecap="round"/>
-                                <path d="M17.66 17.66l1.41 1.41" stroke="white" strokeWidth="2" strokeLinecap="round"/>
-                                <path d="M19.07 4.93l-1.41 1.41" stroke="white" strokeWidth="2" strokeLinecap="round"/>
-                                <path d="M6.34 17.66l-1.41 1.41" stroke="white" strokeWidth="2" strokeLinecap="round"/>
-                            </svg>
-                        </div>
-                        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Career Compass AI</h1>
-                    </div>
-                    <div className="flex items-center space-x-4">
-                        <ThemeToggle />
-                        <SignOutButton>
-                            <Button variant="outline" size="sm" className="p-3 rounded-full w-11 h-11 flex items-center justify-center" title="Sign Out">
-                                <svg
-                                    className="w-5 h-5"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
-                                    xmlns="http://www.w3.org/2000/svg"
-                                >
-                                    <path
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        strokeWidth={2}
-                                        d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-                                    />
-                                </svg>
-                            </Button>
-                        </SignOutButton>
-                    </div>
-                </div>
-            </header>
+        <div className="min-h-screen bg-white dark:bg-gray-900">
+            <div className="container mx-auto px-4 py-8">
+                {/* Welcome Section with AI Animation and Controls */}
+                <WelcomeSection firstName={userProfile?.firstName} />
 
-            {/* Welcome Message Below Header */}
-            {(isLoaded && isSignedIn && user) && (
-                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-b border-gray-200 dark:border-gray-700">
-                    <div className="container mx-auto px-4 py-6">
-                        <div className="flex items-center space-x-4">
-                            {/* Profile Image */}
-                            <div className="flex-shrink-0">
-                                {user.imageUrl ? (
-                                    <img 
-                                        src={user.imageUrl} 
-                                        alt={`${user.firstName || 'User'}'s profile`}
-                                        className="w-16 h-16 rounded-full border-4 border-white dark:border-gray-700 shadow-md object-cover"
-                                    />
-                                ) : (
-                                    <div className="w-16 h-16 rounded-full bg-blue-500 border-4 border-white dark:border-gray-700 shadow-md flex items-center justify-center">
-                                        <span className="text-2xl font-bold text-white">
-                                            {(user.firstName || 'U').charAt(0).toUpperCase()}
-                                        </span>
-                                    </div>
-                                )}
-                            </div>
-                            
-                            {/* Welcome Message */}
-                            <div className="flex-1">
-                                <h2 className="text-2xl font-bold text-gray-800 dark:text-white">
-                                    Hey {user.firstName || 'there'}, Welcome!! 👋
-                                </h2>
-                                <p className="text-gray-600 dark:text-gray-300 mt-1">
-                                    Ready to accelerate your career journey?
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            <div className="container mx-auto p-4 space-y-8">
-                
-
-
-                {/* Welcome Section for New Users */}
-                {!isExistingUser && !parsedResumeData && (
-                    <div className="text-center py-12">
-                        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-8 max-w-2xl mx-auto">
-                            <div className="mb-6">
-                                <div className="w-20 h-20 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
-                                    <svg className="w-10 h-10 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                    </svg>
-                                </div>
-                                <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">Welcome to Career Compass AI! 🎯</h2>
-                                <p className="text-lg text-gray-600 dark:text-gray-300 mb-8">
-                                    Let's get started by uploading your resume. Our AI will analyze it and help you find the perfect job opportunities!
-                                </p>
-                            </div>
-                            
-                            <div className="space-y-4">
-                                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-                                    <h3 className="font-semibold text-blue-900 dark:text-blue-100 mb-2">What happens next?</h3>
-                                    <ul className="text-sm text-blue-800 dark:text-blue-200 space-y-1 text-left">
-                                        <li className="flex items-center"><span className="w-2 h-2 bg-blue-400 rounded-full mr-2"></span>Upload your resume (PDF, DOC, DOCX, or TXT)</li>
-                                        <li className="flex items-center"><span className="w-2 h-2 bg-blue-400 rounded-full mr-2"></span>Our AI extracts your skills, experience, and education</li>
-                                        <li className="flex items-center"><span className="w-2 h-2 bg-blue-400 rounded-full mr-2"></span>Review and save your profile</li>
-                                        <li className="flex items-center"><span className="w-2 h-2 bg-blue-400 rounded-full mr-2"></span>Get personalized job recommendations!</li>
-                                    </ul>
-                                </div>
-                                
-                                <Button 
-                                    onClick={() => document.getElementById('resume-upload')?.click()}
-                                    className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 text-lg font-medium"
-                                    disabled={isParsingProgress}
-                                >
-                                    {isParsingProgress ? (
-                                        <>
-                                            <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent mr-2"></div>
-                                            Processing...
-                                        </>
-                                    ) : (
-                                        "📤 Upload Your Resume"
-                                    )}
-                                </Button>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* Hidden File Input (for new users) */}
-                {!isExistingUser && (
-                    <input
-                        id="resume-upload"
-                        type="file"
-                        accept=".pdf,.doc,.docx,.txt"
-                        onChange={handleFileUploadAndParse}
-                        className="hidden"
-                        disabled={isParsingProgress}
-                    />
-                )}
-
-                {/* Progress Bar for new users */}
-                {!isExistingUser && isParsingProgress && (
-                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-                        <div className="space-y-3">
-                            <div className="flex items-center justify-between">
-                                <span className="text-sm font-medium text-blue-700 dark:text-blue-400">{parsingStep}</span>
-                                <span className="text-sm text-gray-500 dark:text-gray-400">{parsingProgress}%</span>
-                            </div>
-                            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                                <div 
-                                    className="bg-blue-600 dark:bg-blue-500 h-2 rounded-full transition-all duration-500 ease-out"
-                                    style={{ width: `${parsingProgress}%` }}
-                                ></div>
-                            </div>
-                            <div className="flex items-center space-x-2 text-blue-600 dark:text-blue-400">
-                                <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-600 dark:border-blue-400 border-t-transparent"></div>
-                                <span className="text-sm">Processing your resume...</span>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* File Info for new users */}
-                {!isExistingUser && uploadedFile && !isParsingProgress && (
-                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-                        <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3">
-                            <p className="text-sm text-gray-600 dark:text-gray-300">
-                                <strong>Selected:</strong> {uploadedFile.name} ({(uploadedFile.size / 1024 / 1024).toFixed(2)} MB)
-                            </p>
-                        </div>
-                    </div>
-                )}
-
-                {/* Parsed Resume Data Preview for New Users */}
-                {!isExistingUser && parsedResumeData && (
-                    <div className="space-y-6">
-                        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-                            
-                            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md p-4 mb-6">
-                                <div className="flex items-center space-x-2">
-                                    <svg className="w-5 h-5 text-blue-600 dark:text-blue-400" fill="currentColor" viewBox="0 0 20 20">
-                                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                                    </svg>
-                                    <span className="text-blue-800 dark:text-blue-200 font-medium">This is a preview of your parsed resume data. Click "Save as My Profile" to save it permanently.</span>
-                                </div>
-                            </div>
-
-                            {/* Success/Error Messages */}
-                            {parseSuccessMessage && (
-                                <div className="flex items-center space-x-2 text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-md p-4 mb-6">
-                                    <svg className="w-5 h-5 text-green-600 dark:text-green-400" fill="currentColor" viewBox="0 0 20 20">
-                                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                                    </svg>
-                                    <span className="font-medium">{parseSuccessMessage}</span>
-                                </div>
-                            )}
-                            
-                            {parseErrorMessage && (
-                                <div className="flex items-center space-x-2 text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4 mb-6">
-                                    <svg className="w-5 h-5 text-red-600 dark:text-red-400" fill="currentColor" viewBox="0 0 20 20">
-                                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                                    </svg>
-                                    <span className="font-medium">{parseErrorMessage}</span>
-                                </div>
-                            )}
-
-                            {/* Profile Information Grid - Same as above but for preview */}
-                            <div className="grid md:grid-cols-2 gap-8">
-                                {/* Personal Information Section */}
-                                <div className="space-y-6">
-                                    <div>
-                                        <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4 border-b-2 border-blue-100 dark:border-blue-800 pb-2">
-                                            📋 Personal Information
-                                        </h3>
-                                        <div className="space-y-3">
-                                            <div className="flex items-center">
-                                                <span className="font-medium text-gray-600 dark:text-gray-400 w-20">Name:</span>
-                                                <span className="text-gray-900 dark:text-gray-100 text-lg font-medium ml-2">{parsedResumeData.firstName || ""} {parsedResumeData.lastName || ""}</span>
-                                            </div>
-                                            {parsedResumeData.email && (
-                                                <div className="flex items-center">
-                                                    <span className="font-medium text-gray-600 dark:text-gray-400 w-20">Email:</span>
-                                                    <span className="text-gray-900 dark:text-gray-100 ml-2">{parsedResumeData.email}</span>
-                                                </div>
-                                            )}
-                                            {parsedResumeData.phone && (
-                                                <div className="flex items-center">
-                                                    <span className="font-medium text-gray-600 dark:text-gray-400 w-20">Phone:</span>
-                                                    <span className="text-gray-900 dark:text-gray-100 ml-2">{parsedResumeData.phone}</span>
-                                                </div>
-                                            )}
-                                            {parsedResumeData.location && (
-                                                <div className="flex items-center">
-                                                    <span className="font-medium text-gray-600 dark:text-gray-400 w-20">Country:</span>
-                                                    <span className="text-gray-900 dark:text-gray-100 ml-2 flex items-center">
-                                                        <span className="mr-2">🌍</span>
-                                                        {parsedResumeData.location}
-                                                    </span>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    {/* Experience Information */}
-                                    <div>
-                                        <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4 border-b-2 border-green-100 dark:border-green-800 pb-2">
-                                            💼 Experience
-                                        </h3>
-                                        <div className="space-y-3">
-                                            <div className="flex items-center">
-                                                <span className="font-medium text-gray-600 dark:text-gray-400 w-24">Experience:</span>
-                                                <span className="text-gray-900 dark:text-gray-100 text-lg font-medium ml-2">{parsedResumeData.experienceYears} years</span>
-                                            </div>
-                                            <div className="flex items-start">
-                                                <span className="font-medium text-gray-600 dark:text-gray-400 w-24 mt-1">Companies:</span>
-                                                <div className="ml-2 space-y-1">
-                                                    {parsedResumeData.companies.slice(0, 4).map((company, index) => (
-                                                        <div key={index} className="flex items-center space-x-2">
-                                                            <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
-                                                            <span className="text-gray-900 dark:text-gray-100">{company}</span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Professional Information Section */}
-                                <div className="space-y-6">
-                                    {/* Last 3 Job Titles */}
-                                    <div>
-                                        <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4 border-b-2 border-purple-100 dark:border-purple-800 pb-2">
-                                            🎯 Recent Job Titles
-                                        </h3>
-                                        {parsedResumeData.lastThreeJobTitles && parsedResumeData.lastThreeJobTitles.length > 0 ? (
-                                            <div className="space-y-2">
-                                                {parsedResumeData.lastThreeJobTitles.map((job, index) => (
-                                                    <div key={index} className="flex items-center space-x-2">
-                                                        <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
-                                                        <span className="text-gray-900 dark:text-gray-100 font-medium">{job}</span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        ) : (
-                                            <p className="text-gray-500 dark:text-gray-400 italic">No job titles found</p>
-                                        )}
-                                    </div>
-
-                                    {/* Education Section */}
-                                    {parsedResumeData.education && parsedResumeData.education.length > 0 && (
-                                        <div>
-                                            <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4 border-b-2 border-green-100 dark:border-green-800 pb-2">
-                                                🎓 Education
-                                            </h3>
-                                            <div className="space-y-2">
-                                                {parsedResumeData.education.map((edu, index) => (
-                                                    <div key={index} className="flex items-center space-x-2">
-                                                        <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-                                                        <span className="text-gray-900 dark:text-gray-100">{edu}</span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* Certifications Section */}
-                                    {parsedResumeData.certifications && parsedResumeData.certifications.length > 0 && (
-                                        <div>
-                                            <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4 border-b-2 border-yellow-100 dark:border-yellow-800 pb-2">
-                                                🏆 Certifications
-                                            </h3>
-                                            <div className="space-y-2">
-                                                {parsedResumeData.certifications.map((cert, index) => (
-                                                    <div key={index} className="flex items-center space-x-2">
-                                                        <div className="w-2 h-2 bg-yellow-400 rounded-full"></div>
-                                                        <span className="text-gray-900 dark:text-gray-100">{cert}</span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* Professional Summary */}
-                                    {parsedResumeData.experienceSummary && (
-                                        <div>
-                                            <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4 border-b-2 border-orange-100 dark:border-orange-800 pb-2">
-                                                📝 Experience Summary
-                                            </h3>
-                                            <p className="text-gray-700 dark:text-gray-300 leading-relaxed">{parsedResumeData.experienceSummary}</p>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Skills Section - Full Width */}
-                            <div className="pt-6 border-t border-gray-200 dark:border-gray-700">
-                                <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4 border-b-2 border-blue-100 dark:border-blue-800 pb-2">
-                                    🛠️ Technical Skills
-                                </h3>
-                                <SkillsWordCloud skills={parsedResumeData.skills || []} />
-                            </div>
-
-                            {/* Save Profile Button */}
-                            <div className="pt-6 border-t border-gray-200 dark:border-gray-700">
-                                <div className="flex justify-center">
-                                    <Button 
-                                        onClick={handleSaveCV}
-                                        disabled={isSavingProfile}
-                                        className="bg-green-600 hover:bg-green-700 text-white px-8 py-3 text-lg font-medium"
-                                    >
-                                        {isSavingProfile ? (
-                                            <>
-                                                <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent mr-2"></div>
-                                                Saving Profile...
-                                            </>
-                                        ) : (
-                                            <>💾 Save as My Profile</>
-                                        )}
-                                    </Button>
-                                </div>
-                                <p className="text-center text-sm text-gray-500 dark:text-gray-400 mt-3">
-                                    Save this information to create your Career Compass AI profile and unlock all features
-                                </p>
-                            </div>
-                        </div>
-
-                        {/* Job Recommendations for Preview - Optional */}
-                        {jobRecommendations.length > 0 && (
-                            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-                                <div className="flex justify-between items-center mb-6">
-                                    <h2 className="text-2xl font-bold text-gray-800 dark:text-white">💼 Potential Jobs for You</h2>
-                                    <span className="text-sm text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-3 py-1 rounded-full">Preview</span>
-                                </div>
-                                
-                                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4 mb-6">
-                                    <div className="flex items-center space-x-2">
-                                        <svg className="w-5 h-5 text-amber-600 dark:text-amber-400" fill="currentColor" viewBox="0 0 20 20">
-                                            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                {/* Main Content */}
+                {error ? (
+                    <div className="text-red-600 dark:text-red-400">{error}</div>
+                ) : (
+                    <>
+                        {/* Profile Section */}
+                        {userProfile && (
+                            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6 mb-8">
+                                {/* Profile Header with Action Buttons */}
+                                <div className="flex justify-between items-center mb-4">
+                                    <h2 className="text-xl font-semibold flex items-center space-x-2">
+                                        <svg className="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                                         </svg>
-                                        <span className="text-amber-800 dark:text-amber-200 font-medium">Save your profile to get full access to job recommendations and personalized features.</span>
-                                    </div>
-                                </div>
-                                
-                                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                                    {jobRecommendations.slice(0, 3).map((job) => (
-                                        <div key={job.id} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md transition-shadow">
-                                            <h3 className="font-semibold text-lg text-gray-900 dark:text-gray-100 mb-2">{job.title}</h3>
-                                            <p className="text-gray-600 dark:text-gray-300 mb-2">{job.company}</p>
-                                            {job.salary && (
-                                                <p className="text-green-600 dark:text-green-400 font-medium text-sm mb-2">{job.salary}</p>
-                                            )}
-                                            <p className="text-gray-700 dark:text-gray-300 text-sm mb-4 line-clamp-3">{job.description}</p>
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-xs text-gray-500 dark:text-gray-400">
-                                                    {job.daysAgo !== undefined ? `${job.daysAgo} days ago` : job.postedDate}
-                                                </span>
-                                                <a href={job.applyUrl} target="_blank" rel="noopener noreferrer">
-                                                    <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
-                                                        Apply
-                                                    </Button>
-                                                </a>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                )}
-
-                {/* Upload CV Section for Existing Users */}
-                {isExistingUser && userProfile && (
-                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border-l-4 border-green-500 dark:border-green-400">
-                        <div className="flex justify-between items-center mb-6">
-                            <div className="flex items-center space-x-4">
-                                <div>
-                                    <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-200">👤 Your Profile</h2>
-                                    {lastUpdated && (
-                                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Last updated: {lastUpdated}</p>
-                                    )}
-                                </div>
-                                <div className="flex space-x-2">
-                                    <Button 
-                                        onClick={handleEditProfile}
-                                        className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 font-medium"
-                                        disabled={isUploading || isEditingProfile}
-                                    >
-                                        ✏️ Edit Profile
-                                    </Button>
-                                    <Button 
-                                        onClick={async () => {
-                                            if (!userProfile || !user?.id) return;
-                                            
-                                            setIsSavingProfile(true);
-                                            setParseSuccessMessage("");
-                                            setParseErrorMessage("");
-                                            
-                                            try {
-                                                const token = await getToken();
-                                                
-                                                // Prepare comprehensive profile data
-                                                const profileData = {
-                                                    firstName: userProfile.firstName,
-                                                    lastName: userProfile.lastName,
-                                                    email: userProfile.email,
-                                                    phone: userProfile.phone,
-                                                    location: userProfile.location,
-                                                    experienceYears: userProfile.experienceYears,
-                                                    experienceSummary: userProfile.experienceSummary,
-                                                    skills: userProfile.skills,
-                                                    lastThreeJobTitles: userProfile.lastThreeJobTitles,
-                                                    companies: userProfile.companies,
-                                                    education: userProfile.education,
-                                                    certifications: userProfile.certifications,
-                                                    raw_text: userProfile.raw_text || null
-                                                };
-                                                
-                                                const response = await fetch(`/api/user-profile/${user.id}`, {
-                                                    method: 'PUT',
-                                                    headers: {
-                                                        'Content-Type': 'application/json',
-                                                        Authorization: `Bearer ${token}`,
-                                                    },
-                                                    body: JSON.stringify(profileData),
-                                                });
-
-                                                if (!response.ok) {
-                                                    throw new Error('Failed to save profile');
-                                                }
-
-                                                setLastUpdated(new Date().toISOString());
-                                                setParseSuccessMessage('✅ Complete profile saved successfully! All details including name, email, phone, experience, skills, companies, education, certifications, and CV have been saved to the database.');
-                                                
-                                            } catch (error) {
-                                                console.error('Error saving profile:', error);
-                                                setParseErrorMessage('Error saving profile. Please try again.');
-                                            } finally {
-                                                setIsSavingProfile(false);
-                                            }
-                                        }}
-                                        className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 font-medium"
-                                        disabled={isUploading || isEditingProfile || isSavingProfile}
-                                    >
-                                        {isSavingProfile ? (
-                                            <>
-                                                <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2"></div>
-                                                Saving...
-                                            </>
-                                        ) : (
-                                            <>💾 Save Profile</>
-                                        )}
-                                    </Button>
-                                    <Button 
-                                        onClick={() => document.getElementById('cv-update-upload')?.click()}
-                                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 font-medium"
-                                        disabled={isUploading || isEditingProfile}
-                                    >
-                                        {isUploading ? (
-                                            <>
-                                                <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2"></div>
-                                                Updating...
-                                            </>
-                                        ) : (
-                                            <>📤 Update CV</>
-                                        )}
-                                    </Button>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Hidden File Input for Existing Users */}
-                        <input
-                            id="cv-update-upload"
-                            type="file"
-                            accept=".pdf,.doc,.docx,.txt"
-                            onChange={handleUpdateCV}
-                            className="hidden"
-                            disabled={isUploading}
-                        />
-
-                        {/* Success/Error Messages for Profile Updates */}
-                        {parseSuccessMessage && (
-                            <div className="flex items-center space-x-2 text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl p-4 mb-6">
-                                <svg className="w-5 h-5 text-green-600 dark:text-green-400" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                                </svg>
-                                <span className="font-medium">{parseSuccessMessage}</span>
-                            </div>
-                        )}
-                        
-                        {parseErrorMessage && (
-                            <div className="flex items-center space-x-2 text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4 mb-6">
-                                <svg className="w-5 h-5 text-red-600 dark:text-red-400" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                                </svg>
-                                <span className="font-medium">{parseErrorMessage}</span>
-                            </div>
-                        )}
-
-                        {/* Editable Profile Form */}
-                        {isEditingProfile && editableProfile && (
-                            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-6 mb-6">
-                                <div className="flex justify-between items-center mb-6">
-                                    <h3 className="text-xl font-bold text-gray-800 dark:text-gray-200">✏️ Edit Your Profile</h3>
-                                    <div className="flex space-x-2">
+                                        <span>Your Profile</span>
+                                    </h2>
+                                    <div className="flex space-x-3">
+                                        {/* Save Profile to Database Button */}
                                         <Button 
-                                            onClick={handleSaveProfile}
+                                            onClick={handleSaveCV} 
                                             disabled={isSavingProfile}
-                                            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 font-medium"
+                                            className="flex items-center space-x-2 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white border-0 hover:scale-105 transition-all duration-300 shadow-md hover:shadow-lg"
+                                            size="sm"
                                         >
                                             {isSavingProfile ? (
                                                 <>
-                                                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2"></div>
-                                                    Saving Complete Profile...
+                                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                                                    <span>Saving...</span>
                                                 </>
                                             ) : (
-                                                <>💾 Save Complete Profile</>
+                                                <>
+                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3-3m0 0l-3 3m3-3v12" />
+                                                    </svg>
+                                                    <span>Save to Database</span>
+                                                </>
                                             )}
                                         </Button>
+                                        
+                                        {/* Edit Profile Button */}
                                         <Button 
-                                            onClick={handleCancelEdit}
-                                            disabled={isSavingProfile}
-                                            variant="outline"
-                                            className="px-4 py-2 font-medium"
+                                            onClick={handleEditProfile} 
+                                            variant="outline" 
+                                            size="sm"
+                                            className="flex items-center space-x-2 border-blue-200 dark:border-blue-700 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:border-blue-300 dark:hover:border-blue-600 hover:scale-105 transition-all duration-300 shadow-md hover:shadow-lg"
                                         >
-                                            Cancel
+                                            <svg className="w-4 h-4 transition-transform duration-300 group-hover:rotate-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                            </svg>
+                                            <span>Edit Profile</span>
                                         </Button>
                                     </div>
                                 </div>
-                                
-                                <div className="grid md:grid-cols-2 gap-6">
-                                    {/* Personal Information */}
-                                    <div className="space-y-4">
-                                        <h4 className="font-semibold text-gray-800 dark:text-gray-200 border-b border-gray-300 dark:border-gray-600 pb-2">Personal Information</h4>
-                                        <div className="space-y-3">
-                                            <div>
-                                                <Label htmlFor="firstName">First Name</Label>
-                                                <Input
-                                                    id="firstName"
-                                                    value={editableProfile.firstName}
-                                                    onChange={(e) => setEditableProfile({...editableProfile, firstName: e.target.value})}
-                                                    className="mt-1"
-                                                />
-                                            </div>
-                                            <div>
-                                                <Label htmlFor="lastName">Last Name</Label>
-                                                <Input
-                                                    id="lastName"
-                                                    value={editableProfile.lastName}
-                                                    onChange={(e) => setEditableProfile({...editableProfile, lastName: e.target.value})}
-                                                    className="mt-1"
-                                                />
-                                            </div>
-                                            <div>
-                                                <Label htmlFor="email">Email</Label>
-                                                <Input
-                                                    id="email"
-                                                    type="email"
-                                                    value={editableProfile.email || ''}
-                                                    onChange={(e) => setEditableProfile({...editableProfile, email: e.target.value})}
-                                                    className="mt-1"
-                                                />
-                                            </div>
-                                            <div>
-                                                <Label htmlFor="phone">Phone</Label>
-                                                <Input
-                                                    id="phone"
-                                                    value={editableProfile.phone || ''}
-                                                    onChange={(e) => setEditableProfile({...editableProfile, phone: e.target.value})}
-                                                    className="mt-1"
-                                                />
-                                            </div>
-                                            <div>
-                                                <Label htmlFor="location">Country</Label>
-                                                <Input
-                                                    id="location"
-                                                    value={editableProfile.location || ''}
-                                                    onChange={(e) => setEditableProfile({...editableProfile, location: e.target.value})}
-                                                    placeholder="e.g., Netherlands, United States, Germany"
-                                                    className="mt-1"
-                                                />
-                                            </div>
-                                        </div>
-                                    </div>
-                                    
-                                    {/* Experience Information */}
-                                    <div className="space-y-4">
-                                        <h4 className="font-semibold text-gray-800 dark:text-gray-200 border-b border-gray-300 dark:border-gray-600 pb-2">Experience</h4>
-                                        <div className="space-y-3">
-                                            <div>
-                                                <Label htmlFor="experienceYears">Years of Experience</Label>
-                                                <Input
-                                                    id="experienceYears"
-                                                    type="number"
-                                                    value={editableProfile.experienceYears}
-                                                    onChange={(e) => setEditableProfile({...editableProfile, experienceYears: parseInt(e.target.value) || 0})}
-                                                    className="mt-1"
-                                                />
-                                            </div>
-                                            <div>
-                                                <Label htmlFor="experienceSummary">Experience Summary</Label>
-                                                <textarea
-                                                    id="experienceSummary"
-                                                    value={editableProfile.experienceSummary}
-                                                    onChange={(e) => setEditableProfile({...editableProfile, experienceSummary: e.target.value})}
-                                                    className="mt-1 w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-                                                    rows={4}
-                                                />
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                {/* Additional Professional Information */}
-                                <div className="grid md:grid-cols-2 gap-6 mt-6">
-                                    {/* Skills */}
-                                    <div className="space-y-4">
-                                        <h4 className="font-semibold text-gray-800 dark:text-gray-200 border-b border-gray-300 dark:border-gray-600 pb-2">Skills</h4>
-                                        <div>
-                                            <Label htmlFor="skills">Skills (comma-separated)</Label>
-                                            <textarea
-                                                id="skills"
-                                                value={editableProfile.skills.join(', ')}
-                                                onChange={(e) => setEditableProfile({
-                                                    ...editableProfile, 
-                                                    skills: e.target.value.split(',').map(skill => skill.trim()).filter(skill => skill)
-                                                })}
-                                                className="mt-1 w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-                                                rows={3}
-                                                placeholder="e.g., Python, JavaScript, React, Node.js"
-                                            />
-                                        </div>
-                                    </div>
-                                    
-                                    {/* Job Titles */}
-                                    <div className="space-y-4">
-                                        <h4 className="font-semibold text-gray-800 dark:text-gray-200 border-b border-gray-300 dark:border-gray-600 pb-2">Recent Job Titles</h4>
-                                        <div>
-                                            <Label htmlFor="jobTitles">Job Titles (comma-separated)</Label>
-                                            <textarea
-                                                id="jobTitles"
-                                                value={editableProfile.lastThreeJobTitles.join(', ')}
-                                                onChange={(e) => setEditableProfile({
-                                                    ...editableProfile, 
-                                                    lastThreeJobTitles: e.target.value.split(',').map(title => title.trim()).filter(title => title)
-                                                })}
-                                                className="mt-1 w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-                                                rows={3}
-                                                placeholder="e.g., Senior Developer, Team Lead, Software Engineer"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                {/* Companies and Education */}
-                                <div className="grid md:grid-cols-2 gap-6 mt-6">
-                                    {/* Companies */}
-                                    <div className="space-y-4">
-                                        <h4 className="font-semibold text-gray-800 dark:text-gray-200 border-b border-gray-300 dark:border-gray-600 pb-2">Companies</h4>
-                                        <div>
-                                            <Label htmlFor="companies">Companies Worked For (comma-separated)</Label>
-                                            <textarea
-                                                id="companies"
-                                                value={editableProfile.companies.join(', ')}
-                                                onChange={(e) => setEditableProfile({
-                                                    ...editableProfile, 
-                                                    companies: e.target.value.split(',').map(company => company.trim()).filter(company => company)
-                                                })}
-                                                className="mt-1 w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-                                                rows={3}
-                                                placeholder="e.g., Google, Microsoft, Apple"
-                                            />
-                                        </div>
-                                    </div>
-                                    
-                                    {/* Education */}
-                                    <div className="space-y-4">
-                                        <h4 className="font-semibold text-gray-800 dark:text-gray-200 border-b border-gray-300 dark:border-gray-600 pb-2">Education</h4>
-                                        <div>
-                                            <Label htmlFor="education">Education (comma-separated)</Label>
-                                            <textarea
-                                                id="education"
-                                                value={editableProfile.education.join(', ')}
-                                                onChange={(e) => setEditableProfile({
-                                                    ...editableProfile, 
-                                                    education: e.target.value.split(',').map(edu => edu.trim()).filter(edu => edu)
-                                                })}
-                                                className="mt-1 w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-                                                rows={3}
-                                                placeholder="e.g., BS Computer Science, MS Data Science"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                {/* Certifications */}
-                                <div className="mt-6">
-                                    <h4 className="font-semibold text-gray-800 dark:text-gray-200 border-b border-gray-300 dark:border-gray-600 pb-2 mb-4">Certifications</h4>
-                                    <div>
-                                        <Label htmlFor="certifications">Certifications (comma-separated)</Label>
-                                        <textarea
-                                            id="certifications"
-                                            value={editableProfile.certifications.join(', ')}
-                                            onChange={(e) => setEditableProfile({
-                                                ...editableProfile, 
-                                                certifications: e.target.value.split(',').map(cert => cert.trim()).filter(cert => cert)
-                                            })}
-                                            className="mt-1 w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-                                            rows={3}
-                                            placeholder="e.g., AWS Certified Solutions Architect, PMP, Scrum Master"
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-                        )}
 
-                        {/* Main Layout: Profile on Left, Jobs on Right */}
-                        <div className="grid lg:grid-cols-3 gap-8">
-                            {/* Profile Information - Left Side (2/3 width) */}
-                            <div className="lg:col-span-2 space-y-8">
-                                {/* Personal Information and Experience Grid */}
-                                <div className="grid md:grid-cols-2 gap-6">
-                                    {/* Personal Information Section */}
-                                    <div>
-                                        <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4 border-b-2 border-blue-100 dark:border-blue-800 pb-2">
-                                            📋 Personal Information
-                                        </h3>
-                                        <div className="space-y-3">
-                                            <div className="flex items-center">
-                                                <span className="font-medium text-gray-600 dark:text-gray-400 w-20">Name:</span>
-                                                <span className="text-gray-900 dark:text-gray-100 text-lg font-medium ml-2">{userProfile.firstName || ""} {userProfile.lastName || ""}</span>
-                                            </div>
-                                            {userProfile.email && (
-                                                <div className="flex items-center">
-                                                    <span className="font-medium text-gray-600 dark:text-gray-400 w-20">Email:</span>
-                                                    <span className="text-gray-900 dark:text-gray-100 ml-2">{userProfile.email}</span>
-                                                </div>
-                                            )}
-                                            {userProfile.phone && (
-                                                <div className="flex items-center">
-                                                    <span className="font-medium text-gray-600 dark:text-gray-400 w-20">Phone:</span>
-                                                    <span className="text-gray-900 dark:text-gray-100 ml-2">{userProfile.phone}</span>
-                                                </div>
-                                            )}
-                                            {userProfile.location && (
-                                                <div className="flex items-center">
-                                                    <span className="font-medium text-gray-600 dark:text-gray-400 w-20">Country:</span>
-                                                    <span className="text-gray-900 dark:text-gray-100 ml-2 flex items-center">
-                                                        <span className="mr-2">🌍</span>
-                                                        {userProfile.location}
-                                                    </span>
-                                                </div>
-                                            )}
+                                {/* Success/Error Messages for Save Operations */}
+                                {parseSuccessMessage && (
+                                    <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-md p-4 mb-4">
+                                        <div className="flex items-center space-x-2">
+                                            <svg className="w-5 h-5 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                            <p className="text-green-800 dark:text-green-200">{parseSuccessMessage}</p>
                                         </div>
                                     </div>
+                                )}
+                                
+                                {parseErrorMessage && (
+                                    <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md p-4 mb-4">
+                                        <div className="flex items-center space-x-2">
+                                            <svg className="w-5 h-5 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                            <p className="text-red-800 dark:text-red-200">{parseErrorMessage}</p>
+                                        </div>
+                                    </div>
+                                )}
 
-                                    {/* Experience Information */}
-                                    <div>
-                                        <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4 border-b-2 border-green-100 dark:border-green-800 pb-2">
-                                            💼 Experience
-                                        </h3>
-                                        <div className="space-y-3">
-                                            <div className="flex items-center">
-                                                <span className="font-medium text-gray-600 dark:text-gray-400 w-24">Experience:</span>
-                                                <span className="text-gray-900 dark:text-gray-100 text-lg font-medium ml-2">{userProfile.experienceYears} years</span>
+                                {/* Profile Content - Show edit form when editing */}
+                                {isEditingProfile && editableProfile ? (
+                                    <div className="space-y-6">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                            {/* Personal Information */}
+                                            <div className="space-y-4">
+                                                <div>
+                                                    <Label htmlFor="firstName">First Name</Label>
+                                                    <Input
+                                                        id="firstName"
+                                                        value={editableProfile.firstName}
+                                                        onChange={(e) => setEditableProfile({
+                                                            ...editableProfile,
+                                                            firstName: e.target.value
+                                                        })}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <Label htmlFor="lastName">Last Name</Label>
+                                                    <Input
+                                                        id="lastName"
+                                                        value={editableProfile.lastName}
+                                                        onChange={(e) => setEditableProfile({
+                                                            ...editableProfile,
+                                                            lastName: e.target.value
+                                                        })}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <Label htmlFor="email">Email</Label>
+                                                    <Input
+                                                        id="email"
+                                                        type="email"
+                                                        value={editableProfile.email || ''}
+                                                        onChange={(e) => setEditableProfile({
+                                                            ...editableProfile,
+                                                            email: e.target.value
+                                                        })}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <Label htmlFor="phone">Phone</Label>
+                                                    <Input
+                                                        id="phone"
+                                                        value={editableProfile.phone || ''}
+                                                        onChange={(e) => setEditableProfile({
+                                                            ...editableProfile,
+                                                            phone: e.target.value
+                                                        })}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <Label htmlFor="location">Location</Label>
+                                                    <Input
+                                                        id="location"
+                                                        value={editableProfile.location || ''}
+                                                        onChange={(e) => setEditableProfile({
+                                                            ...editableProfile,
+                                                            location: e.target.value
+                                                        })}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <Label htmlFor="experienceYears">Years of Experience</Label>
+                                                    <Input
+                                                        id="experienceYears"
+                                                        type="number"
+                                                        value={editableProfile.experienceYears}
+                                                        onChange={(e) => setEditableProfile({
+                                                            ...editableProfile,
+                                                            experienceYears: parseInt(e.target.value) || 0
+                                                        })}
+                                                    />
+                                                </div>
                                             </div>
-                                            <div className="flex items-start">
-                                                <span className="font-medium text-gray-600 dark:text-gray-400 w-24 mt-1">Companies:</span>
-                                                <div className="ml-2 space-y-1">
-                                                    {userProfile.companies.slice(0, 4).map((company, index) => (
-                                                        <div key={index} className="flex items-center space-x-2">
-                                                            <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
-                                                            <span className="text-gray-900 dark:text-gray-100">{company}</span>
+
+                                            {/* Professional Information */}
+                                            <div className="space-y-4">
+                                                <div>
+                                                    <Label htmlFor="experienceSummary">Experience Summary</Label>
+                                                    <textarea
+                                                        id="experienceSummary"
+                                                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                                                        rows={4}
+                                                        value={editableProfile.experienceSummary}
+                                                        onChange={(e) => setEditableProfile({
+                                                            ...editableProfile,
+                                                            experienceSummary: e.target.value
+                                                        })}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <Label htmlFor="skills">Skills (comma-separated)</Label>
+                                                    <textarea
+                                                        id="skills"
+                                                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                                                        rows={3}
+                                                        value={editableProfile.skills.join(', ')}
+                                                        onChange={(e) => setEditableProfile({
+                                                            ...editableProfile,
+                                                            skills: e.target.value.split(',').map(s => s.trim()).filter(s => s)
+                                                        })}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <Label htmlFor="jobTitles">Recent Job Titles (comma-separated)</Label>
+                                                    <textarea
+                                                        id="jobTitles"
+                                                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                                                        rows={2}
+                                                        value={editableProfile.lastThreeJobTitles.join(', ')}
+                                                        onChange={(e) => setEditableProfile({
+                                                            ...editableProfile,
+                                                            lastThreeJobTitles: e.target.value.split(',').map(s => s.trim()).filter(s => s)
+                                                        })}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <Label htmlFor="companies">Companies (comma-separated)</Label>
+                                                    <textarea
+                                                        id="companies"
+                                                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                                                        rows={2}
+                                                        value={editableProfile.companies.join(', ')}
+                                                        onChange={(e) => setEditableProfile({
+                                                            ...editableProfile,
+                                                            companies: e.target.value.split(',').map(s => s.trim()).filter(s => s)
+                                                        })}
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Update CV Section */}
+                                        <div className="border-t pt-6">
+                                            <h3 className="text-lg font-semibold mb-4 flex items-center space-x-2">
+                                                <svg className="w-5 h-5 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                                                </svg>
+                                                <span>Update CV</span>
+                                            </h3>
+                                            <div className="space-y-4">
+                                                {!isParsingProgress ? (
+                                                    <Input
+                                                        type="file"
+                                                        accept=".pdf,.doc,.docx,.txt"
+                                                        onChange={handleUpdateCV}
+                                                        className="mb-4"
+                                                        disabled={isParsingProgress}
+                                                    />
+                                                ) : (
+                                                    <div className="mb-4 p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-800">
+                                                        <div className="flex items-center space-x-3 mb-3">
+                                                            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-purple-600"></div>
+                                                            <span className="text-purple-800 dark:text-purple-200 font-medium">{parsingStep}</span>
                                                         </div>
-                                                    ))}
-                                                </div>
+                                                        
+                                                        {/* Animated Progress Bar */}
+                                                        <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 mb-2">
+                                                            <div 
+                                                                className="bg-gradient-to-r from-purple-500 to-pink-600 h-3 rounded-full transition-all duration-500 ease-out relative overflow-hidden"
+                                                                style={{ width: `${parsingProgress}%` }}
+                                                            >
+                                                                {/* Animated shine effect */}
+                                                                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-pulse"></div>
+                                                            </div>
+                                                        </div>
+                                                        
+                                                        <div className="flex justify-between text-sm text-purple-700 dark:text-purple-300">
+                                                            <span>Updating your profile...</span>
+                                                            <span>{parsingProgress}%</span>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                <p className="text-sm text-gray-600 dark:text-gray-400">
+                                                    Upload a new CV to automatically update your profile information
+                                                </p>
                                             </div>
                                         </div>
-                                    </div>
-                                </div>
 
-                                {/* Additional Professional Information - Below Experience */}
-                                <div className="grid md:grid-cols-2 gap-6">
-                                    {/* Recent Job Titles */}
-                                    <div>
-                                        <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4 border-b-2 border-purple-100 dark:border-purple-800 pb-2">
-                                            🎯 Recent Job Titles
-                                        </h3>
-                                        {userProfile.lastThreeJobTitles && userProfile.lastThreeJobTitles.length > 0 ? (
-                                            <div className="space-y-2">
-                                                {userProfile.lastThreeJobTitles.map((job, index) => (
-                                                    <div key={index} className="flex items-center space-x-2">
-                                                        <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
-                                                        <span className="text-gray-900 dark:text-gray-100 font-medium">{job}</span>
-                                                    </div>
-                                                ))}
+                                        {/* Action Buttons */}
+                                        <div className="flex space-x-4 pt-4">
+                                            <Button 
+                                                onClick={handleSaveProfile} 
+                                                disabled={isSavingProfile}
+                                                className="flex items-center space-x-2"
+                                            >
+                                                {isSavingProfile ? (
+                                                    <>
+                                                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                                                        <span>Saving...</span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                                        </svg>
+                                                        <span>Save Changes</span>
+                                                    </>
+                                                )}
+                                            </Button>
+                                            <Button 
+                                                onClick={handleCancelEdit} 
+                                                variant="outline"
+                                                className="flex items-center space-x-2"
+                                            >
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                                </svg>
+                                                <span>Cancel</span>
+                                            </Button>
+                                        </div>
+
+                                        {/* Success/Error Messages */}
+                                        {parseSuccessMessage && (
+                                            <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-md p-4">
+                                                <p className="text-green-800 dark:text-green-200">{parseSuccessMessage}</p>
                                             </div>
-                                        ) : (
-                                            <p className="text-gray-500 dark:text-gray-400 italic">No job titles found</p>
+                                        )}
+                                        {parseErrorMessage && (
+                                            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md p-4">
+                                                <p className="text-red-800 dark:text-red-200">{parseErrorMessage}</p>
+                                            </div>
                                         )}
                                     </div>
-
-                                    {/* Education Section */}
-                                    {userProfile.education && userProfile.education.length > 0 && (
-                                        <div>
-                                            <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4 border-b-2 border-green-100 dark:border-green-800 pb-2">
-                                                🎓 Education
-                                            </h3>
-                                            <div className="space-y-2">
-                                                {userProfile.education.map((edu, index) => (
-                                                    <div key={index} className="flex items-center space-x-2">
-                                                        <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-                                                        <span className="text-gray-900 dark:text-gray-100">{edu}</span>
-                                                    </div>
-                                                ))}
+                                ) : (
+                                    // Regular profile view
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        {/* Personal Information and Skills */}
+                                        <div className="space-y-4">
+                                            <div>
+                                                <Label>Name</Label>
+                                                <p className="text-gray-600 dark:text-gray-400">
+                                                    {userProfile.firstName} {userProfile.lastName}
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <Label>Email</Label>
+                                                <p className="text-gray-600 dark:text-gray-400">
+                                                    {userProfile.email || 'Not specified'}
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <Label>Phone</Label>
+                                                <p className="text-gray-600 dark:text-gray-400">
+                                                    {userProfile.phone || 'Not specified'}
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <Label>Location</Label>
+                                                <p className="text-gray-600 dark:text-gray-400">
+                                                    {userProfile.location || 'Not specified'}
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <Label>Experience</Label>
+                                                <p className="text-gray-600 dark:text-gray-400">
+                                                    {userProfile.experienceYears} years
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <Label className="font-bold text-lg flex items-center space-x-2 mb-4">
+                                                    <svg className="w-5 h-5 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                                                    </svg>
+                                                    <span>Technical Skills</span>
+                                                </Label>
+                                                <SkillsWordCloud skills={userProfile.skills} />
                                             </div>
                                         </div>
-                                    )}
-                                </div>
 
-                                {/* Certifications and Experience Summary */}
-                                <div className="grid md:grid-cols-2 gap-6">
-                                    {/* Certifications Section */}
-                                    {userProfile.certifications && userProfile.certifications.length > 0 && (
-                                        <div>
-                                            <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4 border-b-2 border-yellow-100 dark:border-yellow-800 pb-2">
-                                                🏆 Certifications
-                                            </h3>
-                                            <div className="space-y-2">
-                                                {userProfile.certifications.map((cert, index) => (
-                                                    <div key={index} className="flex items-center space-x-2">
-                                                        <div className="w-2 h-2 bg-yellow-400 rounded-full"></div>
-                                                        <span className="text-gray-900 dark:text-gray-100">{cert}</span>
-                                                    </div>
-                                                ))}
+                                        {/* Professional Information and Job Recommendations */}
+                                        <div className="space-y-4">
+                                            <div>
+                                                <Label>Recent Job Titles</Label>
+                                                <ul className="list-disc list-inside text-gray-600 dark:text-gray-400">
+                                                    {userProfile.lastThreeJobTitles?.slice(0, 3).map((title, index) => (
+                                                        <li key={index}>{title}</li>
+                                                    )) || <p>No recent job titles</p>}
+                                                </ul>
                                             </div>
-                                        </div>
-                                    )}
-
-                                    {/* Experience Summary */}
-                                    {userProfile.experienceSummary && (
-                                        <div>
-                                            <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4 border-b-2 border-orange-100 dark:border-orange-800 pb-2">
-                                                📝 Experience Summary
-                                            </h3>
-                                            <p className="text-gray-700 dark:text-gray-300 leading-relaxed">{userProfile.experienceSummary}</p>
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* Skills Section - Full Width */}
-                                <div className="pt-6 border-t border-gray-200 dark:border-gray-700">
-                                    <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4 border-b-2 border-blue-100 dark:border-blue-800 pb-2">
-                                        🛠️ Technical Skills
-                                    </h3>
-                                    <SkillsWordCloud skills={userProfile.skills || []} />
-                                </div>
-                            </div>
-
-                            {/* Job Recommendations - Right Side (1/3 width) */}
-                            {jobRecommendations.length > 0 && (
-                                <div className="lg:col-span-1">
-                                    <div className="sticky top-6">
-                                        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-6">
-                                            <div className="flex justify-between items-center mb-6">
-                                                <h3 className="text-xl font-bold text-blue-900 dark:text-blue-100">💼 Recommended Jobs</h3>
-                                                <div className="flex space-x-2">
-                                                    <Button 
-                                                        variant="outline" 
-                                                        size="sm" 
-                                                        className="w-10 h-10 p-0 rounded-full text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-600 hover:bg-blue-100 dark:hover:bg-blue-800 transition-all duration-300 hover:shadow-lg hover:scale-105"
-                                                        onClick={() => {
-                                                            if (userProfile && user?.id) {
-                                                                console.log('🔄 Manual refresh requested');
-                                                                fetchJobRecommendations(userProfile, true);
-                                                            }
-                                                        }}
-                                                        disabled={loadingJobs}
-                                                        title="Refresh Jobs"
-                                                    >
-                                                        <span className={`text-lg transition-transform duration-500 ${loadingJobs ? 'animate-spin' : 'hover:rotate-180'}`}>
-                                                            ↻
-                                                        </span>
-                                                    </Button>
+                                            <div>
+                                                <Label>Recent Companies</Label>
+                                                <ul className="list-disc list-inside text-gray-600 dark:text-gray-400">
+                                                    {userProfile.companies?.slice(0, 4).map((company, index) => (
+                                                        <li key={index}>{company}</li>
+                                                    )) || <p>No company history</p>}
+                                                </ul>
+                                            </div>
+                                            {/* Job Recommendations */}
+                                            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4">
+                                                <div className="flex justify-between items-center mb-3">
+                                                    <Label className="text-xl font-semibold flex items-center space-x-2">
+                                                        <svg className="w-6 h-6 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2-2v2m8 0H8m8 0v2a2 2 0 01-2 2H10a2 2 0 01-2-2V6m8 0H8m0 0v.01M8 6v6h8V6M8 6H6a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V8a2 2 0 00-2-2h-2" />
+                                                        </svg>
+                                                        <span>Job Recommendations</span>
+                                                    </Label>
                                                     <Link href="/jobs">
                                                         <Button 
                                                             variant="outline" 
-                                                            size="sm" 
-                                                            className="w-10 h-10 p-0 rounded-full text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-600 hover:bg-blue-100 dark:hover:bg-blue-800 transition-all duration-300 hover:shadow-lg hover:scale-105 group"
-                                                            title="View All Jobs"
+                                                            size="sm"
+                                                            className="flex items-center space-x-2 border-purple-200 dark:border-purple-700 text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 hover:border-purple-300 dark:hover:border-purple-600 hover:scale-105 transition-all duration-300 shadow-md hover:shadow-lg"
                                                         >
-                                                            <span className="text-lg transition-transform duration-300 group-hover:scale-110">
-                                                                ●●●
-                                                            </span>
+                                                            <span>View All Jobs</span>
+                                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                                            </svg>
                                                         </Button>
                                                     </Link>
                                                 </div>
-                                            </div>
-                                            
-                                            {loadingJobs ? (
-                                                <div className="flex items-center justify-center py-8">
-                                                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 dark:border-blue-400"></div>
-                                                    <span className="ml-2 text-blue-600 dark:text-blue-400">Loading fresh jobs...</span>
-                                                </div>
-                                            ) : (
-                                                <div className="space-y-4">
-                                                    {jobRecommendations.slice(0, 4).map((job) => (
-                                                        <div key={job.id} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md transition-shadow">
-                                                            <h3 className="font-semibold text-lg text-gray-900 dark:text-gray-100 mb-2">{job.title}</h3>
-                                                            <p className="text-gray-600 dark:text-gray-300 mb-2">{job.company}</p>
-                                                            {job.salary && (
-                                                                <p className="text-green-600 dark:text-green-400 font-medium text-sm mb-2">{job.salary}</p>
-                                                            )}
-                                                            <p className="text-gray-700 dark:text-gray-300 text-sm mb-4 line-clamp-3">{job.description}</p>
-                                                            <div className="flex justify-between items-center">
-                                                                <span className="text-xs text-gray-500 dark:text-gray-400">
-                                                                    {job.daysAgo !== undefined ? `${job.daysAgo} days ago` : job.postedDate}
-                                                                </span>
-                                                                <a href={job.applyUrl} target="_blank" rel="noopener noreferrer">
-                                                                    <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
-                                                                        Apply
-                                                                    </Button>
+                                                {loadingJobs ? (
+                                                    <div className="flex items-center justify-center h-24">
+                                                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                                                    </div>
+                                                ) : jobRecommendations.length > 0 ? (
+                                                    <div className="space-y-3 mt-3">
+                                                        {jobRecommendations.slice(0, 3).map((job) => (
+                                                            <div key={job.id} className="border dark:border-gray-700 rounded-lg p-3 hover:shadow-md transition-shadow">
+                                                                <h3 className="font-medium text-sm">{job.title}</h3>
+                                                                <p className="text-xs text-gray-600 dark:text-gray-400">{job.company}</p>
+                                                                <p className="text-xs text-gray-500 dark:text-gray-500">{job.location}</p>
+                                                                <a 
+                                                                    href={job.applyUrl} 
+                                                                    target="_blank" 
+                                                                    rel="noopener noreferrer"
+                                                                    className="text-blue-600 dark:text-blue-400 text-xs hover:underline mt-1 inline-block"
+                                                                >
+                                                                    View Job →
                                                                 </a>
                                                             </div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )}
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <p className="text-gray-600 dark:text-gray-400 text-sm">No job recommendations available.</p>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* File Upload Section */}
+                        {showFileUpload && (
+                            <div className="mt-8 bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
+                                <h2 className="text-xl font-semibold mb-4 flex items-center space-x-2">
+                                    <svg className="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                                    </svg>
+                                    <span>Upload Your CV</span>
+                                </h2>
+                                
+                                {!isParsingProgress ? (
+                                    <Input
+                                        type="file"
+                                        accept=".pdf,.doc,.docx,.txt"
+                                        onChange={handleFileUploadAndParse}
+                                        className="mb-4"
+                                        disabled={isParsingProgress}
+                                    />
+                                ) : (
+                                    <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                                        <div className="flex items-center space-x-3 mb-3">
+                                            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+                                            <span className="text-blue-800 dark:text-blue-200 font-medium">{parsingStep}</span>
+                                        </div>
+                                        
+                                        {/* Animated Progress Bar */}
+                                        <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 mb-2">
+                                            <div 
+                                                className="bg-gradient-to-r from-blue-500 to-purple-600 h-3 rounded-full transition-all duration-500 ease-out relative overflow-hidden"
+                                                style={{ width: `${parsingProgress}%` }}
+                                            >
+                                                {/* Animated shine effect */}
+                                                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-pulse"></div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="flex justify-between text-sm text-blue-700 dark:text-blue-300">
+                                            <span>Processing your CV...</span>
+                                            <span>{parsingProgress}%</span>
+                                        </div>
+                                    </div>
+                                )}
+                                
+                                {parseErrorMessage && (
+                                    <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md p-4 mb-4">
+                                        <div className="flex items-center space-x-2">
+                                            <svg className="w-5 h-5 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                            <p className="text-red-800 dark:text-red-200">{parseErrorMessage}</p>
+                                        </div>
+                                    </div>
+                                )}
+                                
+                                {parseSuccessMessage && (
+                                    <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-md p-4 mb-4">
+                                        <div className="flex items-center space-x-2">
+                                            <svg className="w-5 h-5 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                            <p className="text-green-800 dark:text-green-200">{parseSuccessMessage}</p>
+                                        </div>
+                                    </div>
+                                )}
+                                
+                                <p className="text-sm text-gray-600 dark:text-gray-400">
+                                    Supported formats: PDF, DOC, DOCX, TXT (Max 10MB)
+                                </p>
+                            </div>
+                        )}
+
+                        {/* Feature Cards */}
+                        <div className="mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                            {/* Career Path Generator Card */}
+                            <Link href="/career-path" className="block bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-lg hover:shadow-xl p-6 transition-all duration-300 hover:scale-105 hover:border-blue-300 dark:hover:border-blue-600 relative overflow-hidden group">
+                                <CardBackgroundAnimation />
+                                <div className="flex flex-col items-center text-center relative z-10">
+                                    <div className="w-12 h-12 mb-4 text-blue-600 dark:text-blue-400 transition-all duration-300 group-hover:scale-125 group-hover:text-blue-700 dark:group-hover:text-blue-300">
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5m.75-9l3-3 2.148 2.148A12.061 12.061 0 0116.5 7.605" />
+                                        </svg>
+                                    </div>
+                                    <h3 className="text-lg font-semibold mb-2 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors duration-300">Career Path Generator</h3>
+                                    <p className="text-sm text-gray-600 dark:text-gray-400 group-hover:text-gray-700 dark:group-hover:text-gray-300 transition-colors duration-300">
+                                        Map your career journey and discover potential paths based on your skills and goals.
+                                    </p>
                                 </div>
-                            )}
+                            </Link>
+
+                            {/* Skill Gap Analysis Card */}
+                            <Link href="/skill-gap-analysis" className="block bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-lg hover:shadow-xl p-6 transition-all duration-300 hover:scale-105 hover:border-green-300 dark:hover:border-green-600 relative overflow-hidden group">
+                                <CardBackgroundAnimation />
+                                <div className="flex flex-col items-center text-center relative z-10">
+                                    <div className="w-12 h-12 mb-4 text-green-600 dark:text-green-400 transition-all duration-300 group-hover:scale-125 group-hover:text-green-700 dark:group-hover:text-green-300">
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23-.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5" />
+                                        </svg>
+                                    </div>
+                                    <h3 className="text-lg font-semibold mb-2 group-hover:text-green-600 dark:group-hover:text-green-400 transition-colors duration-300">Skill Gap Analysis</h3>
+                                    <p className="text-sm text-gray-600 dark:text-gray-400 group-hover:text-gray-700 dark:group-hover:text-gray-300 transition-colors duration-300">
+                                        Identify skill gaps and get personalized recommendations for your target roles.
+                                    </p>
+                                </div>
+                            </Link>
+
+                            {/* Resume Optimization Card */}
+                            <Link href="/resume-optimization" className="block bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-lg hover:shadow-xl p-6 transition-all duration-300 hover:scale-105 hover:border-purple-300 dark:hover:border-purple-600 relative overflow-hidden group">
+                                <CardBackgroundAnimation />
+                                <div className="flex flex-col items-center text-center relative z-10">
+                                    <div className="w-12 h-12 mb-4 text-purple-600 dark:text-purple-400 transition-all duration-300 group-hover:scale-125 group-hover:text-purple-700 dark:group-hover:text-purple-300">
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M11.35 3.836c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m8.9-4.414c.376.023.75.05 1.124.08 1.131.094 1.976 1.057 1.976 2.192V16.5A2.25 2.25 0 0118 18.75h-2.25m-7.5-10.5H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V18.75m-7.5-10.5h6.375c.621 0 1.125.504 1.125 1.125v9.375m-8.25-3l1.5 1.5 3-3.75" />
+                                        </svg>
+                                    </div>
+                                    <h3 className="text-lg font-semibold mb-2 group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors duration-300">Resume Optimization</h3>
+                                    <p className="text-sm text-gray-600 dark:text-gray-400 group-hover:text-gray-700 dark:group-hover:text-gray-300 transition-colors duration-300">
+                                        Get AI-powered suggestions to enhance your resume and increase interview chances.
+                                    </p>
+                                </div>
+                            </Link>
+
+                            {/* Job Recommendations Card */}
+                            <Link href="/jobs" className="block bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-lg hover:shadow-xl p-6 transition-all duration-300 hover:scale-105 hover:border-orange-300 dark:hover:border-orange-600 relative overflow-hidden group">
+                                <CardBackgroundAnimation />
+                                <div className="flex flex-col items-center text-center relative z-10">
+                                    <div className="w-12 h-12 mb-4 text-orange-600 dark:text-orange-400 transition-all duration-300 group-hover:scale-125 group-hover:text-orange-700 dark:group-hover:text-orange-300">
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 14.15v4.25c0 1.094-.787 2.036-1.872 2.18-2.087.277-4.216.42-6.378.42s-4.291-.143-6.378-.42c-1.085-.144-1.872-1.086-1.872-2.18v-4.25m16.5 0a2.18 2.18 0 00.75-1.661V8.706c0-1.081-.768-2.015-1.837-2.175a48.114 48.114 0 00-3.413-.387m4.5 8.006c-.194.165-.42.295-.673.38A23.978 23.978 0 0112 15.75c-2.648 0-5.195-.429-7.577-1.22a2.016 2.016 0 01-.673-.38m0 0A2.18 2.18 0 013 12.489V8.706c0-1.081.768-2.015 1.837-2.175a48.111 48.111 0 013.413-.387m7.5 0V5.25A2.25 2.25 0 0013.5 3h-3a2.25 2.25 0 00-2.25 2.25v.894m7.5 0a48.667 48.667 0 00-7.5 0M12 12.75h.008v.008H12v-.008z" />
+                                        </svg>
+                                    </div>
+                                    <h3 className="text-lg font-semibold mb-2 group-hover:text-orange-600 dark:group-hover:text-orange-400 transition-colors duration-300">Job Recommendations</h3>
+                                    <p className="text-sm text-gray-600 dark:text-gray-400 group-hover:text-gray-700 dark:group-hover:text-gray-300 transition-colors duration-300">
+                                        Discover AI-matched job opportunities tailored to your skills and experience.
+                                    </p>
+                                </div>
+                            </Link>
                         </div>
-                    </div>
+                    </>
                 )}
-
-                {/* AI Tools Navigation Section */}
-                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-                    <h2 className="text-2xl font-bold mb-6 text-center text-gray-900 dark:text-gray-100">🤖 AI-Powered Career Tools</h2>
-                    <p className="text-gray-600 dark:text-gray-300 text-center mb-8">
-                        Choose from our suite of AI tools to accelerate your career growth
-                    </p>
-                    
-                    <div className="grid md:grid-cols-3 gap-6">
-                        {/* Career Path Generator Card */}
-                        <div className="bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-blue-900/20 dark:to-indigo-900/30 border border-blue-200 dark:border-blue-800 rounded-lg p-6 hover:shadow-lg transition-all duration-300 hover:transform hover:scale-105">
-                            <div className="text-center">
-                                <div className="text-4xl mb-4 transition-transform duration-300 hover:scale-110">🚀</div>
-                                <h3 className="text-xl font-bold text-blue-900 dark:text-blue-100 mb-3">Career Path Generator</h3>
-                                <p className="text-blue-700 dark:text-blue-300 text-sm mb-6">
-                                    Get personalized career roadmaps based on your skills and experience. Discover potential career trajectories and required skills.
-                                </p>
-                                <Link href="/career-path">
-                                    <Button className="w-full bg-blue-600 hover:bg-blue-700 transition-colors duration-200">
-                                        Generate Career Path
-                                    </Button>
-                                </Link>
-                            </div>
-                        </div>
-
-                        {/* Skill Gap Analysis Card */}
-                        <div className="bg-gradient-to-br from-green-50 to-emerald-100 dark:from-green-900/20 dark:to-emerald-900/30 border border-green-200 dark:border-green-800 rounded-lg p-6 hover:shadow-lg transition-all duration-300 hover:transform hover:scale-105">
-                            <div className="text-center">
-                                <div className="text-4xl mb-4 transition-transform duration-300 hover:scale-110">📊</div>
-                                <h3 className="text-xl font-bold text-green-900 dark:text-green-100 mb-3">Skill Gap Analysis</h3>
-                                <p className="text-green-700 dark:text-green-300 text-sm mb-6">
-                                    Compare your skills with job requirements. Identify gaps and get personalized learning recommendations.
-                                </p>
-                                <Link href="/skill-gap-analysis">
-                                    <Button className="w-full bg-green-600 hover:bg-green-700 transition-colors duration-200">
-                                        Analyze Skills
-                                    </Button>
-                                </Link>
-                            </div>
-                        </div>
-
-                        {/* Resume Optimization Card */}
-                        <div className="bg-gradient-to-br from-purple-50 to-pink-100 dark:from-purple-900/20 dark:to-pink-900/30 border border-purple-200 dark:border-purple-800 rounded-lg p-6 hover:shadow-lg transition-all duration-300 hover:transform hover:scale-105">
-                            <div className="text-center">
-                                <div className="text-4xl mb-4 transition-transform duration-300 hover:scale-110">📝</div>
-                                <h3 className="text-xl font-bold text-purple-900 dark:text-purple-100 mb-3">Resume Optimization</h3>
-                                <p className="text-purple-700 dark:text-purple-300 text-sm mb-6">
-                                    Optimize your resume for specific jobs. Get AI suggestions for better ATS compatibility and recruiter appeal.
-                                </p>
-                                <Link href="/resume-optimization">
-                                    <Button className="w-full bg-purple-600 hover:bg-purple-700 transition-colors duration-200">
-                                        Optimize Resume
-                                    </Button>
-                                </Link>
-                            </div>
-                        </div>
-                    </div>
-                </div>
             </div>
         </div>
     );
-} 
+}

@@ -1347,6 +1347,165 @@ def generate_career_path(job_title: str, experience: str, skills: list[str]):
         print(f"Error generating career path with AI: {e}")
         return _get_mock_career_path(job_title, experience, skills)
 
+def analyze_comprehensive_skill_gap(user_profile: dict, job_description: str, target_role: str = None):
+    """
+    Comprehensive skill gap analysis that reads user's complete profile including:
+    - Technical skills, certifications, job titles, experience summary
+    - Work experience, companies, education background
+    - Matches against target job description and provides detailed guidance
+    """
+    if is_development_mode or llm is None:
+        return _get_comprehensive_mock_skill_gap(user_profile, job_description, target_role)
+    
+    try:
+        # Enhanced prompt for comprehensive profile-based analysis
+        prompt = PromptTemplate(
+            input_variables=["user_profile", "job_description", "target_role"],
+            template="""
+            As an expert career advisor and learning specialist, analyze the comprehensive skill gap between the user's complete professional profile and their target career goals.
+
+            ## USER'S COMPLETE PROFESSIONAL PROFILE:
+            
+            **Technical Skills:** {skills}
+            **Years of Experience:** {experience_years}
+            **Recent Job Titles:** {job_titles}
+            **Companies Worked At:** {companies}
+            **Education Background:** {education}
+            **Certifications:** {certifications}
+            **Experience Summary:** {experience_summary}
+            **Location:** {location}
+            
+            ## TARGET OPPORTUNITY:
+            **Job Description:** {job_description}
+            **Target Role:** {target_role}
+
+            Please provide a comprehensive skill gap analysis with the following sections:
+
+            ## 1. PROFESSIONAL PROFILE ASSESSMENT
+            - **Experience Level:** Assess the user's seniority based on years and job progression
+            - **Industry Background:** Analyze companies and roles for industry expertise
+            - **Technical Depth:** Evaluate technical skills against experience level
+            - **Career Trajectory:** Comment on career progression and growth pattern
+
+            ## 2. SKILL MATCH ANALYSIS
+            - **Strong Matching Skills:** Skills that directly align with job requirements
+            - **Transferable Skills:** Skills from previous roles that apply to target role
+            - **Experience Relevance:** How past job titles and companies relate to target
+            - **Overall Fit Score:** Rate the user's profile alignment (1-10 scale)
+
+            ## 3. CRITICAL SKILL GAPS
+            - **Missing Technical Skills:** Key technical skills required but not possessed
+            - **Missing Certifications:** Industry certifications that would strengthen candidacy
+            - **Experience Gaps:** Types of experience or responsibilities not yet gained
+            - **Priority Level:** Mark each gap as High/Medium/Low priority for this specific role
+
+            ## 4. EXPERIENCE & BACKGROUND ANALYSIS
+            - **Company Size/Type Fit:** How user's company background fits target role
+            - **Industry Transition:** If changing industries, what skills transfer and what's needed
+            - **Seniority Alignment:** Whether experience level matches role requirements
+            - **Geographic Considerations:** Location factors for the target opportunity
+
+            ## 5. TARGETED LEARNING RECOMMENDATIONS
+
+            Based on the user's current level and specific gaps, provide learning resources using this EXACT format:
+
+            ### 🎯 Priority Learning Path (Based on Your Profile):
+
+            #### Immediate Focus (1-3 months):
+            **For your {experience_years} years of experience level:**
+
+            ##### Coursera:
+            - **"Course Name Here" by Institution/Instructor** - Builds on your {relevant_background}
+            - **"Advanced Course Title" by University Name** - Next level from your current skills
+
+            ##### Udemy:
+            - **"Specific Course Title" by Instructor Name** - Perfect for your experience level
+            - **"Practical Course Name" by Teacher** - Hands-on approach for professionals
+
+            ##### Pluralsight:
+            - **"Learning Path Name" by Pluralsight** - Structured progression for your level
+            - **"Advanced Track" by Pluralsight** - Building on your existing foundation
+
+            ##### LinkedIn Learning:
+            - **"Professional Course" by LinkedIn Learning** - Ideal for your career stage
+            - **"Leadership Course" by LinkedIn Learning** - Management skills for your level
+
+            ##### DeepLearning.ai:
+            - **"Specialization Name" by DeepLearning.ai** - Technical depth for experienced professionals
+            - **"Advanced Series" by DeepLearning.ai** - Cutting-edge skills for your background
+
+            #### Medium-term Development (3-6 months):
+            **Certifications to strengthen your profile:**
+            - **"AWS Solutions Architect Professional" by Amazon Web Services** - $300, advanced level
+            - **"Google Cloud Professional Architect" by Google Cloud** - $200, industry recognition
+            - **"Microsoft Azure Solutions Architect Expert" by Microsoft** - $165, enterprise focus
+
+            #### Long-term Mastery (6-12 months):
+            **Advanced specialization based on your career trajectory:**
+
+            ### 📚 Free Resources Tailored to Your Level:
+
+            #### YouTube Channels (Advanced Content):
+            - **"Channel Name" by YouTube** - Advanced tutorials for experienced professionals
+            - **"Expert Channel" by YouTube** - Industry insights for your experience level
+
+            #### Documentation & Advanced Guides:
+            - **"Advanced Documentation" by Technology Provider** - Deep technical knowledge
+            - **"Architecture Guides" by Platform** - System design for experienced developers
+
+            ### 📖 Professional Development Books:
+            - **"Advanced Book Title" by Publisher** - Strategic thinking for your career level
+            - **"Leadership Book" by Publisher** - Management skills for senior professionals
+
+            ## 6. CAREER STRATEGY RECOMMENDATIONS
+            - **Profile Positioning:** How to position your unique background for this role
+            - **Application Strategy:** Emphasize strengths, address gaps proactively
+            - **Interview Preparation:** Key talking points based on your experience
+            - **Networking Approach:** Leverage your company/industry connections
+
+            ## 7. TIMELINE & ACTION PLAN
+            - **Immediate Actions (Week 1-2):** Quick wins to strengthen your candidacy
+            - **Short-term Goals (1-3 months):** Priority skills and certifications
+            - **Medium-term Development (3-6 months):** Advanced skills and experience
+            - **Long-term Career Growth (6-12 months):** Strategic positioning for next level
+
+            ## 8. MARKET INSIGHTS FOR YOUR PROFILE
+            - **Competitive Advantage:** What makes your background unique
+            - **Market Demand:** How your experience level is valued in the market
+            - **Salary Expectations:** Realistic range based on your profile and target role
+            - **Career Progression:** Next logical steps after securing this role
+
+            IMPORTANT: Tailor all recommendations to the user's specific experience level, background, and career trajectory. Use the exact format "Course Name" by Platform/Provider for automatic link generation.
+            """
+        )
+
+        # Format user profile data for the prompt
+        skills_str = ", ".join(user_profile.get("skills", []))
+        job_titles_str = ", ".join(user_profile.get("job_titles", []))
+        companies_str = ", ".join(user_profile.get("companies", []))
+        education_str = ", ".join(user_profile.get("education", []))
+        certifications_str = ", ".join(user_profile.get("certifications", []))
+        target_role_str = target_role if target_role else "Not specified"
+        
+        chain = LLMChain(llm=llm, prompt=prompt)
+        response = chain.run(
+            skills=skills_str,
+            experience_years=user_profile.get("experience_years", 0),
+            job_titles=job_titles_str,
+            companies=companies_str,
+            education=education_str,
+            certifications=certifications_str,
+            experience_summary=user_profile.get("experience_summary", ""),
+            location=user_profile.get("location", ""),
+            job_description=job_description,
+            target_role=target_role_str
+        )
+
+        return response
+    except Exception as e:
+        print(f"Error analyzing comprehensive skill gap with AI: {e}")
+        return _get_comprehensive_mock_skill_gap(user_profile, job_description, target_role)
+
 def analyze_skill_gap(skills: list[str], job_description: str, target_role: str = None):
     """
     Analyzes the gap between a user's skills and a job description/target role.
@@ -1462,6 +1621,179 @@ def analyze_skill_gap(skills: list[str], job_description: str, target_role: str 
     except Exception as e:
         print(f"Error analyzing skill gap with AI: {e}")
         return _get_enhanced_mock_skill_gap(skills, job_description, target_role)
+
+def _get_comprehensive_mock_skill_gap(user_profile: dict, job_description: str, target_role: str = None):
+    """Return comprehensive mock skill gap analysis based on complete user profile"""
+    skills = user_profile.get("skills", [])
+    experience_years = user_profile.get("experience_years", 0)
+    job_titles = user_profile.get("job_titles", [])
+    companies = user_profile.get("companies", [])
+    education = user_profile.get("education", [])
+    certifications = user_profile.get("certifications", [])
+    
+    user_skills_str = ", ".join(skills[:5]) if skills else "General technical skills"
+    job_titles_str = ", ".join(job_titles[:3]) if job_titles else "Various technical roles"
+    companies_str = ", ".join(companies[:3]) if companies else "Technology companies"
+    education_str = ", ".join(education[:2]) if education else "Computer Science background"
+    certifications_str = ", ".join(certifications[:3]) if certifications else "Industry certifications"
+    role_context = f" for {target_role}" if target_role else ""
+    
+    experience_level = "Senior" if experience_years >= 5 else "Mid-level" if experience_years >= 2 else "Junior"
+    
+    return f"""# 🎯 Comprehensive Professional Skill Gap Analysis{role_context}
+
+## 1. PROFESSIONAL PROFILE ASSESSMENT
+
+**Experience Level:** {experience_level} professional with {experience_years} years of experience
+**Industry Background:** Strong background in technology sector with experience at {companies_str}
+**Technical Depth:** Solid foundation in {user_skills_str} with practical application experience
+**Career Trajectory:** Progressive growth from {job_titles_str} showing consistent advancement
+
+## 2. SKILL MATCH ANALYSIS
+
+**Strong Matching Skills:** {user_skills_str}
+**Transferable Skills:** Project management, problem-solving, team collaboration from your {job_titles_str} experience
+**Experience Relevance:** Your background at {companies_str} provides excellent foundation for this role
+**Overall Fit Score:** 8/10 - Strong candidate with targeted skill development needed
+
+## 3. CRITICAL SKILL GAPS
+
+### High Priority (Missing Technical Skills):
+- **Advanced Cloud Architecture** (AWS/Azure/GCP) - Essential for scalable systems
+- **DevOps & CI/CD Pipelines** - Critical for modern development workflows  
+- **System Design & Microservices** - Required for {experience_level} level positions
+- **Container Orchestration** (Kubernetes/Docker) - Industry standard deployment
+
+### Medium Priority (Missing Certifications):
+- **Cloud Certifications** - AWS Solutions Architect, Azure Developer Associate
+- **Security Certifications** - CompTIA Security+, CISSP for enterprise roles
+- **Project Management** - PMP, Agile certifications for leadership growth
+
+### Experience Gaps:
+- **Large-scale System Design** - Architecture for high-traffic applications
+- **Team Leadership** - Managing technical teams and cross-functional projects
+- **Stakeholder Management** - Executive communication and business alignment
+
+## 4. EXPERIENCE & BACKGROUND ANALYSIS
+
+**Company Size/Type Fit:** Your experience at {companies_str} aligns well with target role requirements
+**Industry Transition:** Strong technical foundation supports transition to {target_role or "target role"}
+**Seniority Alignment:** {experience_years} years experience matches {experience_level} level expectations
+**Geographic Considerations:** Location and remote work capabilities support opportunity
+
+## 5. TARGETED LEARNING RECOMMENDATIONS
+
+### 🎯 Priority Learning Path (Based on Your {experience_years}-Year Profile):
+
+#### Immediate Focus (1-3 months):
+**For your {experience_level} experience level:**
+
+##### Coursera:
+- **"AWS Fundamentals Specialization" by Amazon Web Services** - Builds on your {user_skills_str} background
+- **"Google Cloud Architecture" by Google Cloud** - Advanced cloud concepts for experienced professionals
+- **"System Design Interview" by University of California San Diego** - Perfect for your career level
+- **"DevOps Culture and Mindset" by University of California Davis** - Leadership skills for {experience_level} professionals
+
+##### Udemy:
+- **"AWS Certified Solutions Architect Professional" by Stephane Maarek** - Advanced level for {experience_years}+ years experience
+- **"Docker and Kubernetes: The Complete Guide" by Stephen Grider** - Hands-on approach for professionals
+- **"Microservices with Node JS and React" by Stephen Grider** - Practical architecture for experienced developers
+- **"System Design Interview Guide" by Frank Kane** - Interview prep for {experience_level} roles
+
+##### Pluralsight:
+- **"Cloud Architecture Learning Path" by Pluralsight** - Structured progression for your level
+- **"DevOps Engineer Learning Path" by Pluralsight** - Building on your existing foundation
+- **"Software Architecture Learning Path" by Pluralsight** - Advanced design patterns for experienced developers
+
+##### LinkedIn Learning:
+- **"Strategic Thinking" by LinkedIn Learning** - Ideal for your career stage
+- **"Leading Technical Teams" by LinkedIn Learning** - Management skills for {experience_level} professionals
+- **"Enterprise Architecture Foundations" by LinkedIn Learning** - Business alignment for technical leaders
+
+##### DeepLearning.ai:
+- **"MLOps Specialization" by DeepLearning.ai** - Technical depth for experienced professionals
+- **"AI for Leaders" by DeepLearning.ai** - Strategic AI knowledge for your background
+
+#### Medium-term Development (3-6 months):
+**Certifications to strengthen your profile:**
+- **"AWS Solutions Architect Professional" by Amazon Web Services** - $300, advanced level certification
+- **"Google Cloud Professional Cloud Architect" by Google Cloud** - $200, industry recognition
+- **"Microsoft Azure Solutions Architect Expert" by Microsoft** - $165, enterprise focus
+- **"Certified Kubernetes Administrator (CKA)" by Cloud Native Computing Foundation** - $375, container orchestration mastery
+
+#### Long-term Mastery (6-12 months):
+**Advanced specialization based on your career trajectory:**
+- **"Executive Leadership Program" by Stanford University** - Strategic leadership for senior professionals
+- **"Advanced System Design" by ByteByteGo** - Architecture mastery for principal engineers
+
+### 📚 Free Resources Tailored to Your Level:
+
+#### YouTube Channels (Advanced Content):
+- **"Gaurav Sen" by YouTube** - System design for experienced professionals, 500K+ subscribers
+- **"TechWorld with Nana" by YouTube** - Advanced DevOps for {experience_level} engineers, 800K+ subscribers
+- **"AWS Online Tech Talks" by YouTube** - Latest cloud technologies for professionals
+- **"GOTO Conferences" by YouTube** - Industry insights for experienced developers
+- **"InfoQ" by YouTube** - Software architecture and engineering practices
+
+#### Documentation & Advanced Guides:
+- **"AWS Well-Architected Framework" by Amazon Web Services** - Enterprise architecture principles
+- **"Kubernetes Documentation" by Cloud Native Computing Foundation** - Container orchestration mastery
+- **"System Design Primer" by GitHub** - Comprehensive system design knowledge
+
+### 📖 Professional Development Books:
+- **"Designing Data-Intensive Applications" by O'Reilly Media** - System architecture for {experience_level} engineers
+- **"The Manager's Path" by O'Reilly Media** - Leadership transition for technical professionals
+- **"Building Microservices" by O'Reilly Media** - Advanced architecture patterns
+- **"Site Reliability Engineering" by O'Reilly Media** - Production systems management
+
+## 6. CAREER STRATEGY RECOMMENDATIONS
+
+**Profile Positioning:** Emphasize your {experience_years} years of progressive experience and proven track record at {companies_str}
+**Application Strategy:** Highlight technical depth while addressing architecture and leadership gaps proactively
+**Interview Preparation:** Focus on system design, leadership examples, and technical decision-making from your experience
+**Networking Approach:** Leverage connections from {companies_str} and industry experience for referrals
+
+## 7. TIMELINE & ACTION PLAN
+
+**Immediate Actions (Week 1-2):**
+- Start AWS/Cloud fundamentals course to address immediate technical gaps
+- Update LinkedIn profile highlighting {user_skills_str} and {job_titles_str} experience
+- Begin system design practice for interview preparation
+
+**Short-term Goals (1-3 months):**
+- Complete cloud architecture certification (AWS/Azure/GCP)
+- Gain hands-on experience with Kubernetes and containerization
+- Practice system design interviews and technical leadership scenarios
+
+**Medium-term Development (3-6 months):**
+- Obtain professional cloud certification
+- Lead a technical project demonstrating architecture and leadership skills
+- Build portfolio showcasing system design and scalability expertise
+
+**Long-term Career Growth (6-12 months):**
+- Position for senior/principal engineer or technical lead roles
+- Develop thought leadership through technical writing or speaking
+- Mentor junior developers to demonstrate leadership capabilities
+
+## 8. MARKET INSIGHTS FOR YOUR PROFILE
+
+**Competitive Advantage:** Your combination of {user_skills_str} skills and {experience_years} years at {companies_str} provides strong foundation
+**Market Demand:** {experience_level} professionals with your background are highly sought after in current market
+**Salary Expectations:** ${"$120K-$180K" if experience_years >= 5 else "$90K-$140K" if experience_years >= 2 else "$70K-$110K"} based on your experience level and target role
+**Career Progression:** Next logical steps include Senior Engineer → Principal Engineer → Engineering Manager → Director of Engineering
+
+## 🚀 PERSONALIZED SUCCESS STRATEGY
+
+Based on your {experience_years} years of experience and background at {companies_str}, you're well-positioned for {target_role or "your target role"}. Focus on:
+
+1. **Immediate Impact:** Cloud architecture skills will make you immediately more competitive
+2. **Leadership Development:** Your experience level calls for technical leadership capabilities  
+3. **System Thinking:** Advanced architecture knowledge will set you apart from other candidates
+4. **Continuous Learning:** Stay current with emerging technologies while deepening core expertise
+
+**Remember:** Your proven track record at {companies_str} combined with targeted skill development puts you on a strong path to securing {target_role or "your dream role"}. The key is systematic skill building while leveraging your existing strengths.
+
+🎯 **Next Step:** Start with the AWS/Cloud fundamentals course this week - it's the highest-impact skill for your profile and career goals!"""
 
 def _get_enhanced_mock_skill_gap(skills: list[str], job_description: str, target_role: str = None):
     """Return enhanced mock skill gap analysis aligned with PRD requirements"""

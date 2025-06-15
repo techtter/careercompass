@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException, Request, Header, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
-from ai_services import generate_career_path, analyze_skill_gap, optimize_resume, parse_resume_content
+from ai_services import generate_career_path, analyze_skill_gap, analyze_comprehensive_skill_gap, optimize_resume, parse_resume_content
 import asyncio
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
@@ -694,28 +694,97 @@ async def get_career_path(request: CareerPathRequest):
 @app.post("/api/skill-gap-analysis")
 async def get_skill_gap_analysis(request: SkillGapRequest):
     try:
-        # Get CV data if cv_record_id is provided, otherwise use current data
-        if request.cv_record_id:
-            cv_record = CVRecordService.get_cv_record_by_id(request.cv_record_id)
-            if cv_record:
-                # Use skills from CV record
-                skills_from_cv = json.loads(cv_record.get("skills", "[]"))
-                skills_to_use = skills_from_cv if skills_from_cv else request.skills
-            else:
-                skills_to_use = request.skills
-        else:
-            skills_to_use = request.skills
+        print(f"🔍 DEBUG: Starting comprehensive skill gap analysis for user {request.user_id}")
         
-        analysis = analyze_skill_gap(
-            skills=skills_to_use,
+        # Get user's complete profile from database for comprehensive analysis
+        cv_record = CVRecordService.get_cv_record_by_user(request.user_id)
+        
+        if cv_record:
+            print(f"🔍 DEBUG: Found CV record for comprehensive analysis")
+            
+            # Parse JSON fields if they are strings (for real database data)
+            skills_from_cv = cv_record.get("skills", [])
+            if isinstance(skills_from_cv, str):
+                try:
+                    skills_from_cv = json.loads(skills_from_cv)
+                except:
+                    skills_from_cv = []
+            
+            last_three_job_titles = cv_record.get("lastThreeJobTitles", [])
+            if isinstance(last_three_job_titles, str):
+                try:
+                    last_three_job_titles = json.loads(last_three_job_titles)
+                except:
+                    last_three_job_titles = []
+            
+            companies = cv_record.get("companies", [])
+            if isinstance(companies, str):
+                try:
+                    companies = json.loads(companies)
+                except:
+                    companies = []
+            
+            education = cv_record.get("education", [])
+            if isinstance(education, str):
+                try:
+                    education = json.loads(education)
+                except:
+                    education = []
+            
+            certifications = cv_record.get("certifications", [])
+            if isinstance(certifications, str):
+                try:
+                    certifications = json.loads(certifications)
+                except:
+                    certifications = []
+            
+            # Create comprehensive user profile for analysis
+            user_profile = {
+                "skills": skills_from_cv if skills_from_cv else request.skills,
+                "experience_years": cv_record.get("experienceYears", 0),
+                "job_titles": last_three_job_titles,
+                "companies": companies,
+                "education": education,
+                "certifications": certifications,
+                "experience_summary": cv_record.get("experienceSummary", ""),
+                "location": cv_record.get("location", ""),
+                "raw_text": cv_record.get("raw_text", "")
+            }
+            
+            print(f"🔍 DEBUG: Comprehensive profile analysis:")
+            print(f"   Skills: {user_profile['skills']}")
+            print(f"   Experience: {user_profile['experience_years']} years")
+            print(f"   Job Titles: {user_profile['job_titles']}")
+            print(f"   Companies: {user_profile['companies']}")
+            print(f"   Education: {user_profile['education']}")
+            print(f"   Certifications: {user_profile['certifications']}")
+            
+        else:
+            print(f"🔍 DEBUG: No CV record found, using basic skills from request")
+            # Fallback to basic analysis if no profile found
+            user_profile = {
+                "skills": request.skills,
+                "experience_years": 0,
+                "job_titles": [],
+                "companies": [],
+                "education": [],
+                "certifications": [],
+                "experience_summary": "",
+                "location": "",
+                "raw_text": ""
+            }
+        
+        # Perform comprehensive skill gap analysis
+        analysis = analyze_comprehensive_skill_gap(
+            user_profile=user_profile,
             job_description=request.job_description,
             target_role=request.target_role
         )
         
         # Save skill gap analysis to database
-        if request.cv_record_id:
+        if cv_record:
             SkillGapService.create_skill_gap({
-                "cv_record_id": request.cv_record_id,
+                "cv_record_id": cv_record.get("id"),
                 "user_id": request.user_id,
                 "job_description": request.job_description,
                 "analysis_data": analysis
@@ -723,6 +792,7 @@ async def get_skill_gap_analysis(request: SkillGapRequest):
         
         return {"analysis": analysis}
     except Exception as e:
+        print(f"❌ Error in skill gap analysis: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/optimize-resume")
@@ -1086,4 +1156,8 @@ async def clear_all_job_cache():
             "success": False,
             "error": str(e),
             "message": "Failed to clear job cache"
-        } 
+        }
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000) 

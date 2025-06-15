@@ -8,6 +8,8 @@ import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/Label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
+import JobAIAnimation from '@/components/ui/JobAIAnimation';
+import { useUserProfile } from '@/contexts/UserProfileContext';
 import Link from 'next/link';
 
 interface JobRecommendation {
@@ -26,13 +28,24 @@ interface JobRecommendation {
     match_score?: number;
 }
 
+interface UserProfile {
+    firstName: string;
+    lastName: string;
+    skills: string[];
+    experienceYears: number;
+    lastThreeJobTitles: string[];
+    location?: string;
+}
+
 export default function JobsPage() {
     const { getToken, isLoaded, isSignedIn } = useAuth();
     const { user } = useUser();
     const router = useRouter();
+    const { userProfile: contextUserProfile } = useUserProfile();
     
     const [jobs, setJobs] = useState<JobRecommendation[]>([]);
     const [filteredJobs, setFilteredJobs] = useState<JobRecommendation[]>([]);
+    const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [locationFilter, setLocationFilter] = useState('');
@@ -55,6 +68,21 @@ export default function JobsPage() {
     const fetchAllJobs = async () => {
         setLoading(true);
         try {
+            // First check if we have profile from context
+            if (contextUserProfile) {
+                console.log('Using profile from context for jobs page:', contextUserProfile);
+                // Convert context profile to jobs page profile format
+                const jobsProfile: UserProfile = {
+                    firstName: contextUserProfile.firstName,
+                    lastName: contextUserProfile.lastName,
+                    skills: contextUserProfile.skills,
+                    experienceYears: contextUserProfile.experienceYears,
+                    lastThreeJobTitles: contextUserProfile.lastThreeJobTitles,
+                    location: contextUserProfile.location
+                };
+                setUserProfile(jobsProfile);
+            }
+
             const token = await getToken();
             
             // Use the user profile endpoint which includes job recommendations
@@ -76,6 +104,10 @@ export default function JobsPage() {
             
             if (data.user_exists && data.job_recommendations) {
                 setJobs(data.job_recommendations);
+                // Store user profile data for AI animation if not already set from context
+                if (data.user_profile && !contextUserProfile) {
+                    setUserProfile(data.user_profile);
+                }
                 console.log(`✅ Loaded ${data.job_recommendations.length} job recommendations from saved profile`);
                 
                 // Check if Netherlands jobs are prioritized
@@ -174,8 +206,27 @@ export default function JobsPage() {
                         </div>
                     </div>
                     <div className="flex items-center space-x-4">
-                        <Button onClick={handleRefresh} variant="outline" size="sm" className="mr-4">
-                            🔄 Refresh Jobs
+                        <Button 
+                            onClick={handleRefresh} 
+                            variant="outline" 
+                            size="sm" 
+                            className="mr-4 flex items-center space-x-2 border-blue-200 dark:border-blue-700 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:border-blue-300 dark:hover:border-blue-600 hover:scale-105 transition-all duration-300 shadow-md hover:shadow-lg"
+                        >
+                            <svg 
+                                className="w-4 h-4 transition-transform duration-300 hover:rotate-180" 
+                                fill="none" 
+                                stroke="currentColor" 
+                                viewBox="0 0 24 24" 
+                                xmlns="http://www.w3.org/2000/svg"
+                            >
+                                <path 
+                                    strokeLinecap="round" 
+                                    strokeLinejoin="round" 
+                                    strokeWidth={2} 
+                                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" 
+                                />
+                            </svg>
+                            <span>Refresh Jobs</span>
                         </Button>
                         <span className="text-gray-600 dark:text-gray-300">Welcome, {user?.firstName || "User"}!</span>
                         <ThemeToggle />
@@ -184,6 +235,19 @@ export default function JobsPage() {
             </header>
 
             <div className="container mx-auto px-4 py-8">
+                
+                {/* AI Job Matching Animation */}
+                <div className="mb-8">
+                    <div className="text-center mb-4">
+                        <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+                            🤖 AI-Powered Job Matching
+                        </h2>
+                        <p className="text-gray-600 dark:text-gray-300">
+                            Our AI is continuously analyzing your profile and finding the perfect career opportunities for your growth
+                        </p>
+                    </div>
+                    <JobAIAnimation userProfile={userProfile} jobs={jobs} />
+                </div>
                 
                 {/* Search and Filters */}
                 <Card className="mb-8">
@@ -251,10 +315,30 @@ export default function JobsPage() {
 
                 {/* Job Results */}
                 {loading ? (
-                    <div className="flex items-center justify-center h-64">
-                        <div className="text-center">
-                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 dark:border-blue-400 mx-auto"></div>
-                            <p className="text-gray-600 dark:text-gray-300 mt-2">Loading job recommendations...</p>
+                    <div className="flex flex-col items-center justify-center h-64">
+                        <div className="text-center mb-6">
+                            <div className="relative">
+                                <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-600/30 border-t-blue-600 mx-auto"></div>
+                                <div className="absolute inset-0 flex items-center justify-center">
+                                    <span className="text-blue-600 font-bold text-xs">AI</span>
+                                </div>
+                            </div>
+                            <p className="text-gray-600 dark:text-gray-300 mt-4 font-medium">AI is finding your perfect job matches...</p>
+                            <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">Analyzing your skills and preferences</p>
+                        </div>
+                        <div className="flex items-center space-x-4">
+                            <div className="flex items-center space-x-2">
+                                <div className="w-2 h-2 bg-blue-500 rounded-full animate-ping"></div>
+                                <span className="text-xs text-gray-600 dark:text-gray-400">Scanning job market</span>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                                <div className="w-2 h-2 bg-purple-500 rounded-full animate-ping" style={{animationDelay: '0.3s'}}></div>
+                                <span className="text-xs text-gray-600 dark:text-gray-400">Matching skills</span>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                                <div className="w-2 h-2 bg-green-500 rounded-full animate-ping" style={{animationDelay: '0.6s'}}></div>
+                                <span className="text-xs text-gray-600 dark:text-gray-400">Ranking opportunities</span>
+                            </div>
                         </div>
                     </div>
                 ) : error ? (
@@ -293,7 +377,13 @@ export default function JobsPage() {
                                     <CardContent className="p-6">
                                         <div className="flex justify-between items-start">
                                             <div className="flex-1">
-                                                <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">{job.title}</h3>
+                                                <div className="flex items-center space-x-2 mb-2">
+                                                    <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100">{job.title}</h3>
+                                                    <div className="flex items-center space-x-1 bg-blue-100 dark:bg-blue-900/30 px-2 py-1 rounded-full">
+                                                        <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                                                        <span className="text-xs text-blue-700 dark:text-blue-300 font-medium">AI Matched</span>
+                                                    </div>
+                                                </div>
                                                 <p className="text-lg text-gray-700 dark:text-gray-300 font-medium mb-2">{job.company}</p>
                                                 
                                                 <div className="flex items-center text-sm text-gray-600 dark:text-gray-400 mb-3">

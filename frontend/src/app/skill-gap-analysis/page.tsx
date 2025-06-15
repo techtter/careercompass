@@ -10,6 +10,8 @@ import { Textarea } from "@/components/ui/Textarea";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import Link from "next/link";
 import ReactMarkdown from "react-markdown";
+import SkillGapAIAnimation from "@/components/ui/SkillGapAIAnimation";
+import { useUserProfile } from "@/contexts/UserProfileContext";
 
 // Course URL mappings for different platforms
 const COURSE_PLATFORMS = {
@@ -375,13 +377,14 @@ export default function SkillGapAnalysisPage() {
     const { getToken, isLoaded, isSignedIn } = useAuth();
     const { user } = useUser();
     const router = useRouter();
+    const { userProfile } = useUserProfile();
     
     // State for Skill Gap Analysis
-    const [skills, setSkills] = useState("");
     const [jobDescription, setJobDescription] = useState("");
     const [targetRole, setTargetRole] = useState("");
     const [skillGapAnalysis, setSkillGapAnalysis] = useState("");
     const [loadingSkillGap, setLoadingSkillGap] = useState(false);
+    const [showAllSkills, setShowAllSkills] = useState(false);
 
     useEffect(() => {
         if (isLoaded && !isSignedIn) {
@@ -404,7 +407,7 @@ export default function SkillGapAnalysisPage() {
                 },
                 body: JSON.stringify({
                     user_id: user?.id,
-                    skills: skills.split(",").map((skill) => skill.trim()),
+                    skills: [], // Skills will be read from user profile in backend
                     job_description: jobDescription,
                     target_role: targetRole || null,
                 }),
@@ -487,30 +490,189 @@ export default function SkillGapAnalysisPage() {
             </header>
 
             <div className="container mx-auto p-6">
+                {/* AI-Powered Skill Gap Analysis Section */}
+                <div className="mb-8 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-purple-200 dark:border-purple-700/30 overflow-hidden">
+                    <div className="p-6 bg-gradient-to-r from-purple-50 via-blue-50 to-indigo-50 dark:from-purple-900/20 dark:via-blue-900/20 dark:to-indigo-900/20">
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center space-x-3">
+                                <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-blue-600 rounded-lg flex items-center justify-center shadow-lg">
+                                    <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                        <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                </div>
+                                <div>
+                                    <h2 className="text-2xl font-bold text-purple-900 dark:text-purple-100">🤖 AI-Powered Skill Gap Analysis</h2>
+                                    <p className="text-purple-700 dark:text-purple-300 text-sm">Let AI guide you to your dream job</p>
+                                </div>
+                            </div>
+                            <div className="hidden md:flex items-center space-x-2 text-purple-600 dark:text-purple-400">
+                                <div className="w-2 h-2 bg-purple-400 rounded-full animate-pulse"></div>
+                                <span className="text-sm font-medium">AI Analysis Active</span>
+                            </div>
+                        </div>
+                        
+                        <SkillGapAIAnimation 
+                            isAnalyzing={loadingSkillGap}
+                            targetRole={targetRole || "your target role"}
+                            userSkills={userProfile?.skills || []}
+                        />
+                    </div>
+                </div>
+
                 <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-8">
-                    <div className="mb-6">
+                    <div className="mb-8">
                         <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">📊 Skill Gap Analysis</h2>
-                        <p className="text-gray-600 dark:text-gray-300">
-                            Compare your current skills with job requirements to identify gaps and learning opportunities. 
-                            Get personalized recommendations for skill development with direct links to courses.
+                        <p className="text-gray-600 dark:text-gray-300 mb-4">
+                            🤖 AI analyzes your complete professional profile - skills, experience, certifications, job history, and education - 
+                            against target job requirements to identify gaps and provide personalized learning guidance with direct course links.
                         </p>
+                        
+                        {/* Motivational Cards */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+                            <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/30 p-4 rounded-lg border border-blue-200 dark:border-blue-700">
+                                <div className="flex items-center space-x-3">
+                                    <div className="text-2xl">🎯</div>
+                                    <div>
+                                        <h3 className="font-semibold text-blue-900 dark:text-blue-100">Identify Gaps</h3>
+                                        <p className="text-blue-700 dark:text-blue-300 text-sm">Know exactly what to learn</p>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/30 p-4 rounded-lg border border-purple-200 dark:border-purple-700">
+                                <div className="flex items-center space-x-3">
+                                    <div className="text-2xl">📚</div>
+                                    <div>
+                                        <h3 className="font-semibold text-purple-900 dark:text-purple-100">Get Resources</h3>
+                                        <p className="text-purple-700 dark:text-purple-300 text-sm">Direct links to courses</p>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/30 p-4 rounded-lg border border-green-200 dark:border-green-700">
+                                <div className="flex items-center space-x-3">
+                                    <div className="text-2xl">🚀</div>
+                                    <div>
+                                        <h3 className="font-semibold text-green-900 dark:text-green-100">Land the Job</h3>
+                                        <p className="text-green-700 dark:text-green-300 text-sm">Secure your dream role</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <form onSubmit={handleSkillGapSubmit} className="space-y-6">
-                        <div>
-                            <Label htmlFor="skills">Your Current Skills (comma-separated)</Label>
-                            <Input
-                                id="skills"
-                                value={skills}
-                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSkills(e.target.value)}
-                                placeholder="e.g., Python, React, SQL, Machine Learning, Project Management"
-                                required
-                                className="mt-2"
-                            />
-                            <p className="text-sm text-gray-500 mt-1">
-                                List all your technical and soft skills separated by commas
-                            </p>
-                        </div>
+                        {/* User Profile Summary */}
+                        {userProfile && (
+                            <div className="bg-blue-50 dark:bg-blue-900/20 p-6 rounded-lg border border-blue-200 dark:border-blue-700">
+                                <h3 className="font-semibold text-blue-900 dark:text-blue-100 mb-4 flex items-center">
+                                    <span className="mr-2">📋</span>
+                                    Your Profile Summary
+                                </h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
+                                    <div className="space-y-3">
+                                        <div>
+                                            <p className="text-blue-800 dark:text-blue-200">
+                                                <strong>👤 Name:</strong> {userProfile.firstName && userProfile.lastName ? `${userProfile.firstName} ${userProfile.lastName}` : userProfile.fullName || "Not specified"}
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <p className="text-blue-800 dark:text-blue-200">
+                                                <strong>💼 Experience:</strong> {userProfile.experienceYears > 0 ? `${userProfile.experienceYears} years` : "Not specified"}
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <p className="text-blue-800 dark:text-blue-200">
+                                                <strong>📧 Email:</strong> {userProfile.email || "Not specified"}
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <p className="text-blue-800 dark:text-blue-200">
+                                                <strong>📍 Location:</strong> {userProfile.location || "Not specified"}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-3">
+                                        <div>
+                                            <p className="text-blue-800 dark:text-blue-200">
+                                                <strong>🏢 Recent Roles:</strong> {userProfile.lastThreeJobTitles?.length > 0 ? userProfile.lastThreeJobTitles.slice(0, 2).join(", ") + (userProfile.lastThreeJobTitles.length > 2 ? "..." : "") : "Not specified"}
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <p className="text-blue-800 dark:text-blue-200">
+                                                <strong>🎓 Education:</strong> {userProfile.education?.length > 0 ? userProfile.education.slice(0, 2).join(", ") + (userProfile.education.length > 2 ? "..." : "") : "Not specified"}
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <p className="text-blue-800 dark:text-blue-200">
+                                                <strong>🏆 Certifications:</strong> {userProfile.certifications?.length > 0 ? userProfile.certifications.slice(0, 2).join(", ") + (userProfile.certifications.length > 2 ? "..." : "") : "Not specified"}
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <p className="text-blue-800 dark:text-blue-200">
+                                                <strong>📝 Experience Summary:</strong> {userProfile.experience ? (userProfile.experience.length > 100 ? userProfile.experience.substring(0, 100) + "..." : userProfile.experience) : "Not specified"}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                {/* Skills Section with More >> functionality */}
+                                <div className="mt-4 pt-4 border-t border-blue-200 dark:border-blue-700">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <p className="text-blue-800 dark:text-blue-200 font-medium">
+                                            <strong>🛠️ Skills ({userProfile.skills?.length || 0}):</strong>
+                                        </p>
+                                        {userProfile.skills?.length > 10 && (
+                                            <button
+                                                onClick={() => setShowAllSkills(!showAllSkills)}
+                                                className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 text-sm font-medium underline transition-colors"
+                                            >
+                                                {showAllSkills ? "Show Less <<" : "More >>"}
+                                            </button>
+                                        )}
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        {userProfile.skills?.length > 0 ? (
+                                            (showAllSkills ? userProfile.skills : userProfile.skills.slice(0, 10)).map((skill, index) => (
+                                                <span
+                                                    key={index}
+                                                    className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-800 text-blue-800 dark:text-blue-200 border border-blue-200 dark:border-blue-600"
+                                                >
+                                                    {skill}
+                                                </span>
+                                            ))
+                                        ) : (
+                                            <span className="text-blue-600 dark:text-blue-400 text-sm italic">No skills specified</span>
+                                        )}
+                                    </div>
+                                    {!showAllSkills && userProfile.skills?.length > 10 && (
+                                        <p className="text-xs text-blue-600 dark:text-blue-400 mt-2">
+                                            Showing 10 of {userProfile.skills.length} skills
+                                        </p>
+                                    )}
+                                </div>
+
+                                {/* Show different messages based on whether profile data exists */}
+                                {userProfile.skills?.length > 0 && userProfile.experienceYears > 0 ? (
+                                    <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-700">
+                                        <p className="text-xs text-green-700 dark:text-green-300 flex items-center">
+                                            <span className="mr-2">✨</span>
+                                            AI will analyze your complete profile automatically - no need to re-enter your skills!
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-700">
+                                        <p className="text-xs text-yellow-700 dark:text-yellow-300">
+                                            <span className="mr-2">💡</span>
+                                            <Link href="/dashboard" className="underline hover:text-yellow-800 dark:hover:text-yellow-200 font-medium">Upload your CV on the dashboard</Link> to populate your profile with accurate data for better analysis.
+                                            <br />
+                                            <span className="mr-2">✨</span>
+                                            AI will still analyze based on the job description, but having your profile data makes it much more personalized!
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                         
                         <div>
                             <Label htmlFor="target-role">Target Role (Optional)</Label>
@@ -542,23 +704,105 @@ export default function SkillGapAnalysisPage() {
                             </p>
                         </div>
                         
-                        <Button type="submit" disabled={loadingSkillGap} className="w-full">
-                            {loadingSkillGap ? "Analyzing Skill Gaps..." : "Analyze Skill Gap"}
+                        <Button 
+                            type="submit" 
+                            disabled={loadingSkillGap} 
+                            className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-semibold py-3 px-6 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                        >
+                            {loadingSkillGap ? (
+                                <div className="flex items-center justify-center space-x-2">
+                                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                    <span>🤖 AI Analyzing Your Skills...</span>
+                                </div>
+                            ) : (
+                                <div className="flex items-center justify-center space-x-2">
+                                    <span>🚀 Start AI Analysis</span>
+                                </div>
+                            )}
                         </Button>
                     </form>
 
                     {skillGapAnalysis && (
-                        <div className="mt-8 p-8 border rounded-lg bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/30 border-green-200 dark:border-green-700 shadow-lg">
-                            <h3 className="text-2xl font-semibold mb-6 text-green-900 dark:text-green-100 flex items-center">
-                                🎯 Your Skill Gap Analysis
-                                <span className="ml-3 text-sm font-normal text-green-700 dark:text-green-300">
-                                    Click on course links to visit learning platforms
-                                </span>
-                            </h3>
-                            <div className="prose prose-lg max-w-none text-gray-800 dark:text-gray-200">
-                                <EnhancedMarkdown>
-                                    {skillGapAnalysis}
-                                </EnhancedMarkdown>
+                        <div className="mt-8 space-y-6">
+                            {/* AI Success Banner */}
+                            <div className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl p-6 text-white shadow-lg">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center space-x-4">
+                                        <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
+                                            <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                                            </svg>
+                                        </div>
+                                        <div>
+                                            <h3 className="text-xl font-bold">🎉 AI Analysis Complete!</h3>
+                                            <p className="text-green-100">Your personalized roadmap to {targetRole || "success"} is ready</p>
+                                        </div>
+                                    </div>
+                                    <div className="hidden md:flex items-center space-x-3">
+                                        <div className="text-center">
+                                            <div className="text-2xl font-bold">🚀</div>
+                                            <div className="text-xs">Ready to Launch</div>
+                                        </div>
+                                        <div className="text-center">
+                                            <div className="text-2xl font-bold">💪</div>
+                                            <div className="text-xs">You Got This</div>
+                                        </div>
+                                        <div className="text-center">
+                                            <div className="text-2xl font-bold">🎯</div>
+                                            <div className="text-xs">Goal Focused</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Analysis Results */}
+                            <div className="p-8 border rounded-lg bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/30 border-green-200 dark:border-green-700 shadow-lg">
+                                <div className="flex items-center justify-between mb-6">
+                                    <h3 className="text-2xl font-semibold text-green-900 dark:text-green-100 flex items-center">
+                                        🎯 Your AI-Powered Career Roadmap
+                                    </h3>
+                                    <div className="flex items-center space-x-2 text-green-700 dark:text-green-300">
+                                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                                        <span className="text-sm font-medium">Click course links to start learning</span>
+                                    </div>
+                                </div>
+                                
+                                {/* Motivational Message */}
+                                <div className="mb-6 p-4 bg-white/60 dark:bg-gray-800/60 rounded-lg border border-green-200 dark:border-green-700">
+                                    <div className="flex items-center space-x-3">
+                                        <div className="text-2xl">🤖</div>
+                                        <div>
+                                            <p className="text-green-800 dark:text-green-200 font-medium">
+                                                <strong>AI Insight:</strong> Based on your skills and target role, I've identified the most impactful areas for growth. 
+                                                Follow this roadmap and you'll be ready to secure {targetRole || "your dream job"} sooner than you think!
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="prose prose-lg max-w-none text-gray-800 dark:text-gray-200">
+                                    <EnhancedMarkdown>
+                                        {skillGapAnalysis}
+                                    </EnhancedMarkdown>
+                                </div>
+
+                                {/* Action Encouragement */}
+                                <div className="mt-8 p-4 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20 rounded-lg border border-blue-200 dark:border-blue-700">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center space-x-3">
+                                            <div className="text-2xl">💡</div>
+                                            <div>
+                                                <h4 className="font-semibold text-blue-900 dark:text-blue-100">Ready to Take Action?</h4>
+                                                <p className="text-blue-700 dark:text-blue-300 text-sm">
+                                                    Start with the highest priority skills and track your progress. Every step brings you closer to your goal!
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div className="hidden md:block">
+                                            <div className="text-4xl animate-bounce">🎯</div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     )}

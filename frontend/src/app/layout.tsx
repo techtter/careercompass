@@ -3,6 +3,7 @@ import React from "react";
 import "./globals.css";
 import { ClerkProvider } from "@clerk/nextjs";
 import { ThemeProvider } from "@/contexts/ThemeContext";
+import { UserProfileProvider } from "@/contexts/UserProfileContext";
 
 export const metadata: Metadata = {
   title: "Career Compass AI",
@@ -66,7 +67,9 @@ export default function RootLayout({
         </head>
         <body className="font-sans antialiased transition-colors duration-300 bg-white dark:bg-gray-900 text-gray-900 dark:text-white min-h-screen" suppressHydrationWarning>
           <ThemeProvider>
-            {children}
+            <UserProfileProvider>
+              {children}
+            </UserProfileProvider>
           </ThemeProvider>
         </body>
       </html>
