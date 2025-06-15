@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Label } from "@/components/ui/Label";
 import { Textarea } from "@/components/ui/Textarea";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 
@@ -25,6 +26,158 @@ interface CVRecord {
     created_at: string;
     updated_at: string;
 }
+
+// Utility function to detect if text is JSON
+const isJsonString = (str: string): boolean => {
+    try {
+        const parsed = JSON.parse(str);
+        return typeof parsed === 'object' && parsed !== null;
+    } catch {
+        return false;
+    }
+};
+
+// Utility function to format CV content consistently
+const formatCvContent = (rawText: string, cvRecord: CVRecord): string => {
+    if (!rawText) {
+        // Create fallback CV content from structured data
+        return createFallbackCvContent(cvRecord);
+    }
+
+    // Check if raw_text is a JSON string (from old saves)
+    if (isJsonString(rawText)) {
+        try {
+            const parsedData = JSON.parse(rawText);
+            return createCvFromParsedData(parsedData);
+        } catch {
+            return createFallbackCvContent(cvRecord);
+        }
+    }
+
+    // Return the original CV text as-is
+    return rawText;
+};
+
+// Create CV content from parsed JSON data
+const createCvFromParsedData = (data: any): string => {
+    const sections = [];
+    
+    // Header
+    if (data.firstName || data.lastName) {
+        sections.push(`${data.firstName || ''} ${data.lastName || ''}`.trim());
+    }
+    
+    if (data.email) sections.push(`Email: ${data.email}`);
+    if (data.phone) sections.push(`Phone: ${data.phone}`);
+    if (data.location) sections.push(`Location: ${data.location}`);
+    
+    sections.push(''); // Empty line
+    
+    // Professional Summary
+    if (data.experienceSummary) {
+        sections.push('PROFESSIONAL SUMMARY');
+        sections.push(data.experienceSummary);
+        sections.push('');
+    }
+    
+    // Experience
+    if (data.experienceYears) {
+        sections.push('EXPERIENCE');
+        sections.push(`${data.experienceYears} years of professional experience`);
+        
+        if (data.lastThreeJobTitles && Array.isArray(data.lastThreeJobTitles)) {
+            data.lastThreeJobTitles.forEach((title: string, index: number) => {
+                const company = data.companies && data.companies[index] ? ` at ${data.companies[index]}` : '';
+                sections.push(`• ${title}${company}`);
+            });
+        }
+        sections.push('');
+    }
+    
+    // Skills
+    if (data.skills && Array.isArray(data.skills) && data.skills.length > 0) {
+        sections.push('SKILLS');
+        sections.push(data.skills.join(', '));
+        sections.push('');
+    }
+    
+    // Education
+    if (data.education && Array.isArray(data.education) && data.education.length > 0) {
+        sections.push('EDUCATION');
+        data.education.forEach((edu: string) => {
+            sections.push(`• ${edu}`);
+        });
+        sections.push('');
+    }
+    
+    // Certifications
+    if (data.certifications && Array.isArray(data.certifications) && data.certifications.length > 0) {
+        sections.push('CERTIFICATIONS');
+        data.certifications.forEach((cert: string) => {
+            sections.push(`• ${cert}`);
+        });
+    }
+    
+    return sections.join('\n');
+};
+
+// Create fallback CV content from CVRecord
+const createFallbackCvContent = (cvRecord: CVRecord): string => {
+    const sections = [];
+    
+    if (cvRecord.name) sections.push(cvRecord.name);
+    if (cvRecord.email) sections.push(`Email: ${cvRecord.email}`);
+    if (cvRecord.phone) sections.push(`Phone: ${cvRecord.phone}`);
+    if (cvRecord.location) sections.push(`Location: ${cvRecord.location}`);
+    
+    sections.push(''); // Empty line
+    
+    if (cvRecord.summary) {
+        sections.push('PROFESSIONAL SUMMARY');
+        sections.push(cvRecord.summary);
+        sections.push('');
+    }
+    
+    if (cvRecord.experience) {
+        sections.push('EXPERIENCE');
+        sections.push(cvRecord.experience);
+        sections.push('');
+    }
+    
+    if (cvRecord.skills) {
+        sections.push('SKILLS');
+        sections.push(cvRecord.skills);
+        sections.push('');
+    }
+    
+    if (cvRecord.education) {
+        sections.push('EDUCATION');
+        sections.push(cvRecord.education);
+    }
+    
+    return sections.join('\n');
+};
+
+// Component to display formatted CV content
+const FormattedCvDisplay = ({ cvRecord }: { cvRecord: CVRecord }) => {
+    const formattedContent = formatCvContent(cvRecord.raw_text, cvRecord);
+    
+    return (
+        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6 shadow-sm">
+            <h4 className="font-semibold text-gray-800 dark:text-gray-200 mb-4 flex items-center">
+                📄 CV Content
+                <span className="ml-2 text-sm font-normal text-gray-500 dark:text-gray-400">
+                    (Formatted for readability)
+                </span>
+            </h4>
+            <div className="prose prose-sm max-w-none">
+                <div className="whitespace-pre-wrap text-gray-700 dark:text-gray-300 font-mono text-sm leading-relaxed bg-gray-50 dark:bg-gray-900 p-4 rounded-lg border break-words overflow-hidden">
+                    {formattedContent}
+                </div>
+            </div>
+        </div>
+    );
+};
 
 export default function ResumeOptimizationPage() {
     const { getToken, isLoaded, isSignedIn } = useAuth();
@@ -119,10 +272,13 @@ export default function ResumeOptimizationPage() {
         try {
             const token = await getToken();
             
+            // Use formatted CV content for better consistency
+            const formattedCvContent = formatCvContent(cvRecord.raw_text, cvRecord);
+            
             const requestBody = {
                 user_id: user?.id,
                 cv_record_id: cvRecord.id,
-                resume_text: cvRecord.raw_text,
+                resume_text: formattedCvContent, // Use formatted content instead of raw_text
                 job_description: jobDescriptionForResume,
             };
             
@@ -164,12 +320,12 @@ export default function ResumeOptimizationPage() {
     }
 
     return (
-        <div className="min-h-screen bg-gray-50">
+        <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
             {/* Header */}
-            <header className="bg-white shadow-sm border-b">
+            <header className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
                 <div className="container mx-auto px-4 py-4 flex justify-between items-center">
                     <div className="flex items-center space-x-4">
-                        <Link href="/dashboard" className="text-blue-600 hover:text-blue-800">
+                        <Link href="/dashboard" className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300">
                             ← Back to Dashboard
                         </Link>
                         <div className="flex items-center space-x-3">
@@ -188,36 +344,50 @@ export default function ResumeOptimizationPage() {
                                     <path d="M6.34 17.66l-1.41 1.41" stroke="white" strokeWidth="2" strokeLinecap="round"/>
                                 </svg>
                             </div>
-                            <h1 className="text-2xl font-bold text-gray-900">Resume Optimization</h1>
+                            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Resume Optimization</h1>
                         </div>
                     </div>
                     <div className="flex items-center space-x-4">
-                        <span className="text-gray-600">Welcome, {user?.firstName || "User"}!</span>
+                        <span className="text-gray-600 dark:text-gray-300">Welcome, {user?.firstName || "User"}!</span>
+                        <ThemeToggle />
                         <SignOutButton>
-                            <Button variant="outline" size="sm">
-                                Sign Out
+                            <Button variant="outline" size="sm" className="p-3 rounded-full w-11 h-11 flex items-center justify-center" title="Sign Out">
+                                <svg
+                                    className="w-5 h-5"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                    xmlns="http://www.w3.org/2000/svg"
+                                >
+                                    <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                                    />
+                                </svg>
                             </Button>
                         </SignOutButton>
                     </div>
                 </div>
             </header>
 
-            <div className="container mx-auto p-6">
-                <div className="bg-white rounded-lg shadow-md p-8">
+            <div className="container mx-auto p-4 sm:p-6 max-w-7xl">
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 sm:p-8 overflow-hidden">
                     <div className="mb-6">
-                        <h2 className="text-3xl font-bold text-gray-900 mb-2">📝 Resume Optimization</h2>
-                        <p className="text-gray-600">
-                            Optimize your resume for specific job applications. Get AI-powered suggestions to improve 
-                            your resume content, formatting, and keyword optimization for better ATS compatibility.
+                        <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-2">📄 Resume Optimization</h2>
+                        <p className="text-gray-600 dark:text-gray-300 text-sm sm:text-base">
+                            Get AI-powered suggestions to optimize your resume for specific job opportunities. 
+                            Upload your resume and paste the target job description to receive personalized recommendations.
                         </p>
                     </div>
 
                     {loadingCV ? (
                         <div className="flex items-center justify-center py-12">
-                            <div className="text-lg text-gray-600">Loading your CV...</div>
+                            <div className="text-lg text-gray-600 dark:text-gray-300">Loading your CV...</div>
                         </div>
                     ) : !cvRecord ? (
-                        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 mb-6">
+                        <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-6 mb-6">
                             <div className="flex items-center">
                                 <div className="flex-shrink-0">
                                     <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
@@ -225,10 +395,10 @@ export default function ResumeOptimizationPage() {
                                     </svg>
                                 </div>
                                 <div className="ml-3">
-                                    <h3 className="text-sm font-medium text-yellow-800">
+                                    <h3 className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
                                         No CV Found
                                     </h3>
-                                    <div className="mt-2 text-sm text-yellow-700">
+                                    <div className="mt-2 text-sm text-yellow-700 dark:text-yellow-300">
                                         <p>
                                             Please upload your CV first from the dashboard to use the resume optimization feature.
                                         </p>
@@ -247,47 +417,44 @@ export default function ResumeOptimizationPage() {
                         <>
                             {/* Display Current CV */}
                             <div className="mb-8">
-                                <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-                                    <h3 className="text-xl font-semibold text-blue-900 mb-4 flex items-center">
+                                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-6">
+                                    <h3 className="text-xl font-semibold text-blue-900 dark:text-blue-100 mb-4 flex items-center">
                                         📄 Your Current CV
-                                        <span className="ml-2 text-sm font-normal text-blue-600">
+                                        <span className="ml-2 text-sm font-normal text-blue-600 dark:text-blue-300">
                                             ({cvRecord.filename})
                                         </span>
                                     </h3>
                                     
                                     {/* CV Summary Info */}
                                     {(cvRecord.name || cvRecord.email || cvRecord.phone) && (
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4 p-4 bg-white rounded-lg border">
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4 p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
                                             {cvRecord.name && (
                                                 <div>
-                                                    <span className="font-medium text-gray-700">Name:</span>
-                                                    <p className="text-gray-600">{cvRecord.name}</p>
+                                                    <span className="font-medium text-gray-700 dark:text-gray-300">Name:</span>
+                                                    <p className="text-gray-600 dark:text-gray-400">{cvRecord.name}</p>
                                                 </div>
                                             )}
                                             {cvRecord.email && (
                                                 <div>
-                                                    <span className="font-medium text-gray-700">Email:</span>
-                                                    <p className="text-gray-600">{cvRecord.email}</p>
+                                                    <span className="font-medium text-gray-700 dark:text-gray-300">Email:</span>
+                                                    <p className="text-gray-600 dark:text-gray-400">{cvRecord.email}</p>
                                                 </div>
                                             )}
                                             {cvRecord.phone && (
                                                 <div>
-                                                    <span className="font-medium text-gray-700">Phone:</span>
-                                                    <p className="text-gray-600">{cvRecord.phone}</p>
+                                                    <span className="font-medium text-gray-700 dark:text-gray-300">Phone:</span>
+                                                    <p className="text-gray-600 dark:text-gray-400">{cvRecord.phone}</p>
                                                 </div>
                                             )}
                                         </div>
                                     )}
 
-                                    {/* CV Full Text */}
-                                    <div className="bg-white rounded-lg border p-4 max-h-96 overflow-y-auto">
-                                        <h4 className="font-medium text-gray-700 mb-2">Full CV Content:</h4>
-                                        <pre className="whitespace-pre-wrap text-sm text-gray-600 font-mono">
-                                            {cvRecord.raw_text}
-                                        </pre>
+                                    {/* CV Full Text - Using FormattedCvDisplay */}
+                                    <div className="mt-4">
+                                        <FormattedCvDisplay cvRecord={cvRecord} />
                                     </div>
                                     
-                                    <p className="text-sm text-blue-600 mt-2">
+                                    <p className="text-sm text-blue-600 dark:text-blue-300 mt-2">
                                         Last updated: {new Date(cvRecord.updated_at).toLocaleDateString()}
                                     </p>
                                 </div>
@@ -306,7 +473,7 @@ export default function ResumeOptimizationPage() {
                                         rows={12}
                                         className="mt-2"
                                     />
-                                    <p className="text-sm text-gray-500 mt-1">
+                                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                                         Include the full job posting to tailor your resume specifically for this role
                                     </p>
                                 </div>
@@ -319,51 +486,51 @@ export default function ResumeOptimizationPage() {
                     )}
 
                     {resumeOptimization && (
-                        <div className="mt-8 p-8 border rounded-lg bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200 shadow-lg">
-                            <h3 className="text-2xl font-semibold mb-6 text-purple-900 flex items-center">
+                        <div className="mt-8 p-4 sm:p-8 border rounded-lg bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 border-purple-200 dark:border-purple-800 shadow-lg overflow-hidden">
+                            <h3 className="text-xl sm:text-2xl font-semibold mb-6 text-purple-900 dark:text-purple-100 flex items-center break-words">
                                 ✨ AI-Powered Resume Optimization Recommendations
                             </h3>
-                            <div className="prose prose-lg max-w-none text-gray-800">
+                            <div className="prose prose-sm sm:prose-lg max-w-none text-gray-800 dark:text-gray-200 overflow-hidden word-wrap break-words">
                                 <ReactMarkdown
                                     components={{
                                         h1: ({node, ...props}) => (
-                                            <h1 className="text-3xl font-bold text-purple-900 mb-6 mt-8 pb-2 border-b-2 border-purple-200" {...props} />
+                                            <h1 className="text-3xl font-bold text-purple-900 dark:text-purple-100 mb-6 mt-8 pb-2 border-b-2 border-purple-200 dark:border-purple-800 break-words" {...props} />
                                         ),
                                         h2: ({node, ...props}) => (
-                                            <h2 className="text-2xl font-semibold text-purple-800 mb-4 mt-6 pb-1 border-b border-purple-100" {...props} />
+                                            <h2 className="text-2xl font-semibold text-purple-800 dark:text-purple-200 mb-4 mt-6 pb-1 border-b border-purple-100 dark:border-purple-800 break-words" {...props} />
                                         ),
                                         h3: ({node, ...props}) => (
-                                            <h3 className="text-xl font-medium text-purple-700 mb-3 mt-5" {...props} />
+                                            <h3 className="text-xl font-medium text-purple-700 dark:text-purple-300 mb-3 mt-5 break-words" {...props} />
                                         ),
                                         h4: ({node, ...props}) => (
-                                            <h4 className="text-lg font-medium text-purple-600 mb-2 mt-4" {...props} />
+                                            <h4 className="text-lg font-medium text-purple-600 dark:text-purple-400 mb-2 mt-4 break-words" {...props} />
                                         ),
                                         p: ({node, ...props}) => (
-                                            <p className="mb-4 text-gray-700 leading-relaxed text-base" {...props} />
+                                            <p className="mb-4 text-gray-700 dark:text-gray-300 leading-relaxed text-base break-words" {...props} />
                                         ),
                                         ul: ({node, ...props}) => (
-                                            <ul className="list-disc list-outside mb-4 pl-6 space-y-2" {...props} />
+                                            <ul className="list-disc list-outside mb-4 pl-6 space-y-2 break-words" {...props} />
                                         ),
                                         ol: ({node, ...props}) => (
-                                            <ol className="list-decimal list-outside mb-4 pl-6 space-y-2" {...props} />
+                                            <ol className="list-decimal list-outside mb-4 pl-6 space-y-2 break-words" {...props} />
                                         ),
                                         li: ({node, ...props}) => (
-                                            <li className="text-gray-700 leading-relaxed text-base" {...props} />
+                                            <li className="text-gray-700 dark:text-gray-300 leading-relaxed text-base break-words" {...props} />
                                         ),
                                         strong: ({node, ...props}) => (
-                                            <strong className="font-semibold text-gray-900" {...props} />
+                                            <strong className="font-semibold text-gray-900 dark:text-gray-100 break-words" {...props} />
                                         ),
                                         em: ({node, ...props}) => (
-                                            <em className="italic text-gray-600" {...props} />
+                                            <em className="italic text-gray-600 dark:text-gray-400 break-words" {...props} />
                                         ),
                                         code: ({node, ...props}) => (
-                                            <code className="bg-purple-100 px-2 py-1 rounded text-sm text-purple-800 font-mono" {...props} />
+                                            <code className="bg-purple-100 dark:bg-purple-900/30 px-2 py-1 rounded text-sm text-purple-800 dark:text-purple-200 font-mono break-words" {...props} />
                                         ),
                                         pre: ({node, ...props}) => (
-                                            <pre className="bg-gray-100 p-4 rounded-lg overflow-x-auto mb-4 text-sm" {...props} />
+                                            <pre className="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg mb-4 text-sm whitespace-pre-wrap break-words overflow-hidden" {...props} />
                                         ),
                                         blockquote: ({node, ...props}) => (
-                                            <blockquote className="border-l-4 border-purple-300 pl-4 italic text-gray-600 my-4" {...props} />
+                                            <blockquote className="border-l-4 border-purple-300 dark:border-purple-600 pl-4 italic text-gray-600 dark:text-gray-400 my-4" {...props} />
                                         ),
                                     }}
                                 >

@@ -15,6 +15,10 @@ from database import (
     ResumeOptimizationService, LearningProgressService as LearningGoalService, database_available
 )
 import base64
+from job_cache import (
+    get_cache_stats, invalidate_user_cache, refresh_user_cache,
+    get_user_cached_jobs, cache_user_jobs
+)
 
 # Import job services for job recommendations
 try:
@@ -287,6 +291,28 @@ async def save_cv(request: SaveCVRequest):
         if isinstance(parsed_data, str):
             parsed_data = json.loads(parsed_data)
         
+        # Enhanced location extraction and validation
+        location = parsed_data.get("location", "")
+        print(f"🌍 DEBUG: Location from parsed data: '{location}'")
+        
+        # If no location found in parsed data, try to extract from raw text
+        if not location:
+            print(f"🌍 DEBUG: No location in parsed data, extracting from raw text...")
+            try:
+                from ai_services import _extract_country_from_work_history
+                companies = parsed_data.get("companies", [])
+                job_titles = parsed_data.get("lastThreeJobTitles", [])
+                location = _extract_country_from_work_history(request.raw_text, companies, job_titles)
+                print(f"🌍 DEBUG: Extracted location from raw text: '{location}'")
+                
+                # Update parsed_data with extracted location
+                if location:
+                    parsed_data["location"] = location
+            except Exception as e:
+                print(f"🌍 DEBUG: Error extracting location: {e}")
+        
+        print(f"🌍 DEBUG: Final location to save: '{location}'")
+        
         # Prepare data dictionary for CVRecordService with new simplified structure
         cv_data = {
             "user_id": request.user_id,
@@ -298,7 +324,7 @@ async def save_cv(request: SaveCVRequest):
             "lastName": parsed_data.get("lastName"),
             "email": parsed_data.get("email"), 
             "phone": parsed_data.get("phone"),
-            "location": parsed_data.get("location"),
+            "location": location,  # Use the processed location
             "experienceYears": parsed_data.get("experienceYears"),
             "skills": json.dumps(parsed_data.get("skills", [])),
             "lastThreeJobTitles": json.dumps(parsed_data.get("lastThreeJobTitles", [])),
@@ -308,13 +334,25 @@ async def save_cv(request: SaveCVRequest):
             "certifications": json.dumps(parsed_data.get("certifications", []))
         }
         
+        print(f"🌍 DEBUG: Saving CV data with location: '{cv_data.get('location')}'")
+        
         cv_record = CVRecordService.create_cv_record(cv_data)
         
         if cv_record:
-            return {"success": True, "cv_record_id": cv_record["id"], "message": "Profile saved successfully"}
+            print(f"✅ DEBUG: CV saved successfully with location: '{cv_record.get('location')}'")
+            return {
+                "success": True, 
+                "cv_record_id": cv_record["id"], 
+                "message": "Profile saved successfully",
+                "debug_info": {
+                    "saved_location": cv_record.get("location"),
+                    "extracted_location": location
+                }
+            }
         else:
             raise HTTPException(status_code=500, detail="Failed to save profile")
     except Exception as e:
+        print(f"❌ Error saving CV: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/cv-records/{user_id}")
@@ -337,13 +375,17 @@ async def get_user_cv_records(user_id: str):
 async def get_user_profile_with_jobs(user_id: str):
     """Get user profile and personalized job recommendations if user exists"""
     try:
+        print(f"🔍 DEBUG: Getting user profile for user {user_id}")
         cv_record = CVRecordService.get_cv_record_by_user(user_id)
         
         if not cv_record:
+            print(f"🔍 DEBUG: No CV record found for user {user_id}")
             return {
                 "user_exists": False,
                 "message": "User not found. Please upload your CV to get started."
             }
+        
+        print(f"🔍 DEBUG: CV record found: {cv_record}")
         
         # Parse JSON fields if they are strings (for real database data)
         skills = cv_record.get("skills", [])
@@ -381,13 +423,37 @@ async def get_user_profile_with_jobs(user_id: str):
             except:
                 certifications = []
         
+        # Extract location with enhanced debugging
+        location = cv_record.get("location", "")
+        print(f"🌍 DEBUG: Raw location from database: '{location}'")
+        
+        # If no location in database, try to extract from raw text
+        if not location:
+            raw_text = cv_record.get("raw_text", "")
+            if raw_text:
+                print(f"🌍 DEBUG: No location in database, trying to extract from raw text...")
+                try:
+                    from ai_services import _extract_country_from_work_history
+                    location = _extract_country_from_work_history(raw_text, companies, last_three_job_titles)
+                    print(f"🌍 DEBUG: Extracted location from raw text: '{location}'")
+                    
+                    # Save the extracted location back to the database
+                    if location:
+                        update_data = {"location": location}
+                        CVRecordService.update_cv_record(user_id, update_data)
+                        print(f"🌍 DEBUG: Saved extracted location '{location}' to database")
+                except Exception as e:
+                    print(f"🌍 DEBUG: Error extracting location from raw text: {e}")
+        
+        print(f"🌍 DEBUG: Final location for job search: '{location}'")
+        
         # Create user profile from CV record with new simplified structure
         user_profile = {
             "firstName": cv_record.get("firstName"),
             "lastName": cv_record.get("lastName"),
             "email": cv_record.get("email"),
             "phone": cv_record.get("phone"),
-            "location": cv_record.get("location"),
+            "location": location,  # Use the processed location
             "experienceYears": cv_record.get("experienceYears"),
             "skills": skills,
             "lastThreeJobTitles": last_three_job_titles,
@@ -397,18 +463,21 @@ async def get_user_profile_with_jobs(user_id: str):
             "certifications": certifications
         }
         
-        # Get personalized job recommendations
+        # Get personalized job recommendations with enhanced location targeting
         job_recommendations = []
         try:
             from job_services import get_personalized_job_recommendations
             # Convert experience years to string format for job service
             experience_str = f"{user_profile['experienceYears']} years" if user_profile["experienceYears"] else "Entry level"
+            
+            print(f"🔍 DEBUG: Calling job recommendations with location: '{location}'")
             job_recommendations = await get_personalized_job_recommendations(
                 skills=user_profile["skills"],
                 experience=experience_str,
                 last_two_jobs=user_profile["lastThreeJobTitles"][:2],  # Use first two job titles
-                location=user_profile.get("location")  # Use location from CV if available
+                location=location  # Use the processed location
             )
+            print(f"🔍 DEBUG: Got {len(job_recommendations)} job recommendations")
         except Exception as job_error:
             print(f"Error getting job recommendations: {job_error}")
             # Continue without jobs if job service fails
@@ -422,7 +491,12 @@ async def get_user_profile_with_jobs(user_id: str):
             "cv_filename": cv_record.get("filename", "CV"),
             "job_recommendations": job_recommendations,
             "last_updated": cv_record.get("updated_at"),
-            "message": f"Welcome back, {full_name or 'User'}! Here are your latest job recommendations."
+            "message": f"Welcome back, {full_name or 'User'}! Here are your latest job recommendations.",
+            "debug_info": {
+                "location_from_db": cv_record.get("location", ""),
+                "final_location": location,
+                "job_count": len(job_recommendations)
+            }
         }
         
     except Exception as e:
@@ -716,12 +790,14 @@ async def get_job_recommendations(request: JobRecommendationRequest):
                 "message": "Job services not available. Please configure API keys to enable real job search."
             }
 
-        # Get REAL job recommendations using multiple job APIs - NO MOCK DATA
+        # Get REAL job recommendations using multiple job APIs with caching - NO MOCK DATA
         job_recommendations = await get_personalized_job_recommendations(
             skills=request.skills,
             experience=request.experience,
             last_two_jobs=request.lastTwoJobs,
-            location=request.location
+            location=request.location,
+            user_id=None,  # No user ID for direct requests
+            use_cache=True
         )
 
         if job_recommendations:
@@ -820,7 +896,9 @@ async def get_user_job_recommendations(user_id: str):
                 skills=skills,
                 experience=experience_str,
                 last_two_jobs=last_three_job_titles[:2],
-                location=location
+                location=location,
+                user_id=user_id,  # Pass user_id for user-specific caching
+                use_cache=True
             )
             
             if real_jobs:
@@ -935,3 +1013,77 @@ async def get_learning_recommendations(skill_gap_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 # Webhook handler temporarily disabled for development 
+
+# Cache Management Endpoints
+@app.get("/api/cache/stats")
+async def get_cache_statistics():
+    """Get comprehensive cache statistics for monitoring performance"""
+    try:
+        stats = get_cache_stats()
+        return {
+            "success": True,
+            "cache_stats": stats,
+            "message": "Cache statistics retrieved successfully"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "message": "Failed to retrieve cache statistics"
+        }
+
+@app.post("/api/cache/refresh/{user_id}")
+async def refresh_user_job_cache(user_id: str):
+    """Force refresh job cache for a specific user"""
+    try:
+        refresh_user_cache(user_id)
+        return {
+            "success": True,
+            "message": f"Cache refreshed for user {user_id}. Next job request will fetch fresh data."
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "message": f"Failed to refresh cache for user {user_id}"
+        }
+
+@app.delete("/api/cache/user/{user_id}")
+async def invalidate_user_job_cache(user_id: str):
+    """Invalidate job cache for a specific user"""
+    try:
+        invalidated = invalidate_user_cache(user_id)
+        if invalidated:
+            return {
+                "success": True,
+                "message": f"Cache invalidated for user {user_id}"
+            }
+        else:
+            return {
+                "success": True,
+                "message": f"No cache found for user {user_id}"
+            }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "message": f"Failed to invalidate cache for user {user_id}"
+        }
+
+@app.delete("/api/cache/clear-all")
+async def clear_all_job_cache():
+    """Clear all job cache entries (admin function)"""
+    try:
+        from job_cache import job_cache, user_session_cache
+        job_cache.clear_all()
+        user_session_cache.user_sessions.clear()
+        return {
+            "success": True,
+            "message": "All job cache entries cleared successfully"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "message": "Failed to clear job cache"
+        } 

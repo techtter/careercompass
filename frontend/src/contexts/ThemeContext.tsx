@@ -10,63 +10,76 @@ interface ThemeContextType {
   mounted: boolean;
 }
 
-// Create a default context value to prevent undefined errors
-const defaultContextValue: ThemeContextType = {
-  theme: 'light',
-  toggleTheme: () => {},
-  mounted: false,
-};
-
-const ThemeContext = createContext<ThemeContextType>(defaultContextValue);
+const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<Theme>('light');
   const [mounted, setMounted] = useState(false);
 
-  // Load theme from localStorage on mount
-  useEffect(() => {
-    try {
-      if (typeof window !== 'undefined') {
-        const savedTheme = localStorage.getItem('theme') as Theme;
-        if (savedTheme && (savedTheme === 'light' || savedTheme === 'dark')) {
-          setTheme(savedTheme);
-        } else {
-          // Check system preference
-          const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-          const systemTheme = systemPrefersDark ? 'dark' : 'light';
-          setTheme(systemTheme);
-        }
-      }
-    } catch (error) {
-      // Fallback if localStorage is not available
-      console.warn('Could not load theme from localStorage:', error);
-      setTheme('light');
-    }
-    setMounted(true);
-  }, []);
-
   // Apply theme to document
-  useEffect(() => {
-    if (mounted && typeof window !== 'undefined') {
+  const applyTheme = (newTheme: Theme) => {
+    if (typeof window !== 'undefined') {
       const root = document.documentElement;
+      
+      // Remove existing theme classes
       root.classList.remove('light', 'dark');
-      root.classList.add(theme);
+      // Add new theme class
+      root.classList.add(newTheme);
+      // Set color scheme
+      root.style.colorScheme = newTheme;
+      
+      // Force a repaint to ensure the theme is applied
+      root.style.display = 'none';
+      root.offsetHeight; // Trigger reflow
+      root.style.display = '';
       
       try {
-        localStorage.setItem('theme', theme);
+        localStorage.setItem('theme', newTheme);
+        console.log(`Theme applied: ${newTheme}`);
       } catch (error) {
-        // Handle localStorage errors gracefully
         console.warn('Could not save theme to localStorage:', error);
       }
     }
-  }, [theme, mounted]);
+  };
+
+  // Initialize theme on mount
+  useEffect(() => {
+    const initializeTheme = () => {
+      try {
+        if (typeof window !== 'undefined') {
+          const savedTheme = localStorage.getItem('theme') as Theme;
+          const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          
+          let initialTheme: Theme;
+          if (savedTheme && (savedTheme === 'light' || savedTheme === 'dark')) {
+            initialTheme = savedTheme;
+          } else {
+            initialTheme = systemPrefersDark ? 'dark' : 'light';
+          }
+          
+          console.log(`Initializing theme: ${initialTheme}`);
+          setTheme(initialTheme);
+          applyTheme(initialTheme);
+        }
+      } catch (error) {
+        console.warn('Could not initialize theme:', error);
+        setTheme('light');
+        applyTheme('light');
+      } finally {
+        setMounted(true);
+      }
+    };
+
+    initializeTheme();
+  }, []);
 
   const toggleTheme = () => {
     const newTheme = theme === 'light' ? 'dark' : 'light';
+    console.log(`Toggling theme from ${theme} to ${newTheme}`);
     setTheme(newTheme);
+    applyTheme(newTheme);
   };
 
-  // Always provide the context value
   const contextValue: ThemeContextType = {
     theme,
     toggleTheme,
@@ -82,11 +95,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
 export function useTheme() {
   const context = useContext(ThemeContext);
-  // Since we now have a default value, this should never be undefined
-  // But we'll keep the check for safety
-  if (!context) {
-    console.warn('useTheme called outside of ThemeProvider, using default values');
-    return defaultContextValue;
+  if (context === undefined) {
+    throw new Error('useTheme must be used within a ThemeProvider');
   }
   return context;
 } 

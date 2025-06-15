@@ -1359,7 +1359,7 @@ def analyze_skill_gap(skills: list[str], job_description: str, target_role: str 
         return _get_enhanced_mock_skill_gap(skills, job_description, target_role)
     
     try:
-        # Enhanced prompt for better skill gap analysis
+        # Enhanced prompt for better skill gap analysis with structured course links
         prompt = PromptTemplate(
             input_variables=["skills", "job_description", "target_role"],
             template="""
@@ -1387,31 +1387,56 @@ def analyze_skill_gap(skills: list[str], job_description: str, target_role: str 
             - **Specific Areas:** What aspects of these skills need development
 
             ## 4. TARGETED LEARNING RECOMMENDATIONS
-            For each missing or weak skill, provide specific learning resources:
+
+            For each missing or weak skill, provide specific learning resources using this EXACT format for course names:
 
             ### Online Courses:
-            - **Coursera:** Specific course names from top universities (e.g., "Machine Learning by Stanford University")
-            - **Udemy:** Popular highly-rated courses with instructor names
-            - **Pluralsight:** Technology-focused learning paths
-            - **DeepLearning.ai:** AI/ML specializations
-            - **LinkedIn Learning:** Professional development courses
+
+            #### Coursera:
+            - **"Course Name Here" by Institution/Instructor** - Rating and description
+            - **"Another Course Name" by University Name** - Additional details
+
+            #### Udemy:
+            - **"Specific Course Title" by Instructor Name** - Rating and student count
+            - **"Another Udemy Course" by Teacher** - Course details
+
+            #### Pluralsight:
+            - **"Learning Path Name" by Pluralsight** - Technology focus
+            - **"Specific Course Title" by Pluralsight** - Skill development
+
+            #### LinkedIn Learning:
+            - **"Course Title" by LinkedIn Learning** - Professional development focus
+            - **"Another Course" by LinkedIn Learning** - Career advancement
+
+            #### DeepLearning.ai:
+            - **"Specialization Name" by DeepLearning.ai** - AI/ML focus
+            - **"Course Series" by DeepLearning.ai** - Technical depth
 
             ### Certifications:
-            - Industry-recognized certifications (AWS, Google Cloud, Microsoft, etc.)
-            - Professional certifications relevant to the role
+            - **"AWS Solutions Architect Associate" by Amazon Web Services** - $150, 3-month prep
+            - **"Google Cloud Professional Developer" by Google Cloud** - $200, industry-recognized
+            - **"Microsoft Azure Developer Associate" by Microsoft** - $165, growing demand
 
             ### Free Resources:
-            - **YouTube Channels:** Specific channels with high engagement
-            - **Documentation & Tutorials:** Official docs and guides
-            - **Open Source Projects:** GitHub repositories to contribute to
+
+            #### YouTube Channels:
+            - **"Traversy Media" by YouTube** - 1.8M subscribers, web development
+            - **"TechWorld with Nana" by YouTube** - 500K+ subscribers, DevOps
+            - **"freeCodeCamp.org" by YouTube** - 5M+ subscribers, programming
+
+            #### Documentation & Tutorials:
+            - **"AWS Documentation" by Amazon Web Services** - Comprehensive guides
+            - **"React Official Tutorial" by Facebook** - Frontend fundamentals
+            - **"Kubernetes Docs" by Cloud Native Computing Foundation** - Container orchestration
 
             ### Books & Publications:
-            - Essential books for skill development
-            - Industry publications and blogs
+            - **"Designing Data-Intensive Applications" by O'Reilly Media** - System design
+            - **"Clean Code" by Pearson** - Code quality practices
+            - **"The DevOps Handbook" by IT Revolution Press** - DevOps culture
 
             ## 5. LEARNING ROADMAP
-            - **Phase 1 (1-3 months):** Immediate priority skills
-            - **Phase 2 (3-6 months):** Intermediate development
+            - **Phase 1 (1-3 months):** Immediate priority skills with specific courses
+            - **Phase 2 (3-6 months):** Intermediate development with learning paths
             - **Phase 3 (6-12 months):** Advanced skills and specialization
 
             ## 6. MARKET INSIGHTS
@@ -1419,7 +1444,7 @@ def analyze_skill_gap(skills: list[str], job_description: str, target_role: str 
             - **Salary Impact:** Potential salary increase with these skills
             - **Career Progression:** How these skills enable career advancement
 
-            Present the analysis in a clear, actionable format with specific resource recommendations.
+            IMPORTANT: Always use the exact format "Course Name" by Platform/Provider for all course recommendations to enable automatic link generation.
             """
         )
 
@@ -1475,107 +1500,114 @@ def _get_enhanced_mock_skill_gap(skills: list[str], job_description: str, target
 - **"AWS Fundamentals" by Amazon Web Services** - 4.6★ rating, 50K+ students
 - **"Machine Learning" by Stanford University** - Andrew Ng, 4.9★ rating
 - **"Google Cloud Platform Fundamentals" by Google Cloud** - Industry-leading content
+- **"Introduction to Data Science" by University of Washington** - Comprehensive data analysis
+- **"Full Stack Web Development" by University of Hong Kong** - Complete web development
 
 #### Udemy:
 - **"Docker and Kubernetes: The Complete Guide" by Stephen Grider** - 4.7★, 100K+ students
 - **"The Complete Node.js Developer Course" by Andrew Mead** - 4.6★, 200K+ students
 - **"React - The Complete Guide" by Maximilian Schwarzmüller** - 4.6★, 500K+ students
+- **"AWS Certified Solutions Architect" by Stephane Maarek** - 4.7★, 300K+ students
+- **"Python for Data Science and Machine Learning" by Jose Portilla** - 4.6★, 400K+ students
 
 #### Pluralsight:
-- **"AWS Developer Learning Path"** - Comprehensive cloud development
-- **"DevOps Foundations Learning Path"** - CI/CD and automation
-- **"System Design Interview Prep"** - Architecture and scalability
+- **"AWS Developer Learning Path" by Pluralsight** - Comprehensive cloud development
+- **"DevOps Foundations Learning Path" by Pluralsight** - CI/CD and automation
+- **"System Design Interview Prep" by Pluralsight** - Architecture and scalability
+- **"React.js Learning Path" by Pluralsight** - Frontend development mastery
+- **"Docker and Kubernetes" by Pluralsight** - Container orchestration
 
 #### DeepLearning.ai:
-- **"Deep Learning Specialization"** - 5-course series by Andrew Ng
-- **"Machine Learning Engineering for Production (MLOps)"** - Production ML systems
+- **"Deep Learning Specialization" by DeepLearning.ai** - 5-course series by Andrew Ng
+- **"Machine Learning Engineering for Production (MLOps)" by DeepLearning.ai** - Production ML systems
+- **"TensorFlow Developer Professional Certificate" by DeepLearning.ai** - Practical ML implementation
+- **"AI for Everyone" by DeepLearning.ai** - Business applications of AI
 
 #### LinkedIn Learning:
-- **"Strategic Thinking"** - Executive-level decision making
-- **"Leading Technical Teams"** - Engineering management
-- **"Agile Project Management"** - Modern project delivery
+- **"Strategic Thinking" by LinkedIn Learning** - Executive-level decision making
+- **"Leading Technical Teams" by LinkedIn Learning** - Engineering management
+- **"Agile Project Management" by LinkedIn Learning** - Modern project delivery
+- **"Cloud Computing Foundations" by LinkedIn Learning** - Cloud basics
+- **"Python Essential Training" by LinkedIn Learning** - Programming fundamentals
 
 ### 🏆 Certifications:
-- **AWS Solutions Architect Associate** - $150, 3-month prep time
-- **Google Cloud Professional Developer** - $200, industry-recognized
-- **Microsoft Azure Developer Associate** - $165, growing demand
-- **Certified Kubernetes Administrator (CKA)** - $375, container orchestration
-- **PMP (Project Management Professional)** - $555, leadership credential
+- **"AWS Solutions Architect Associate" by Amazon Web Services** - $150, 3-month prep time
+- **"Google Cloud Professional Developer" by Google Cloud** - $200, industry-recognized
+- **"Microsoft Azure Developer Associate" by Microsoft** - $165, growing demand
+- **"Certified Kubernetes Administrator (CKA)" by Cloud Native Computing Foundation** - $375, container orchestration
+- **"PMP (Project Management Professional)" by Project Management Institute** - $555, leadership credential
 
 ### 🆓 Free Resources:
 
 #### YouTube Channels:
-- **"Traversy Media"** - 1.8M subscribers, web development tutorials
-- **"TechWorld with Nana"** - 500K+ subscribers, DevOps and cloud
-- **"freeCodeCamp.org"** - 5M+ subscribers, comprehensive programming courses
-- **"AWS Online Tech Talks"** - Official AWS content, latest updates
+- **"Traversy Media" by YouTube** - 1.8M subscribers, web development tutorials
+- **"TechWorld with Nana" by YouTube** - 500K+ subscribers, DevOps and cloud
+- **"freeCodeCamp.org" by YouTube** - 5M+ subscribers, comprehensive programming courses
+- **"AWS Online Tech Talks" by YouTube** - Official AWS content, latest updates
+- **"Coding Train" by YouTube** - Creative coding and programming concepts
+- **"3Blue1Brown" by YouTube** - Mathematical concepts for data science and machine learning
+- **"StatQuest with Josh Starmer" by YouTube** - Statistics and machine learning explained simply
+- **"Corey Schafer" by YouTube** - Python tutorials and best practices
+- **"Programming with Mosh" by YouTube** - Programming fundamentals and advanced concepts
+- **"The Net Ninja" by YouTube** - Modern JavaScript frameworks and web development
+- **"Java Brains" by YouTube** - Java enterprise development and Spring framework
+- **"Derek Banas" by YouTube** - Programming tutorials across multiple languages
+- **"Sentdex" by YouTube** - Python for machine learning and AI applications
+- **"Two Minute Papers" by YouTube** - Latest machine learning research explained
+- **"NetworkChuck" by YouTube** - Networking, cybersecurity, and IT fundamentals
+- **"Fireship" by YouTube** - Quick programming tutorials and tech news
+- **"CS Dojo" by YouTube** - Programming fundamentals and computer science concepts
+- **"Web Dev Simplified" by YouTube** - Simplified web development tutorials
+- **"JavaScript Mastery" by YouTube** - Advanced JavaScript projects and frameworks
+- **"Real Python" by YouTube** - Professional Python development practices
 
 #### Documentation & Tutorials:
-- **AWS Documentation** - Comprehensive cloud service guides
-- **Kubernetes Official Docs** - Container orchestration mastery
-- **React Official Tutorial** - Frontend framework fundamentals
-- **MDN Web Docs** - Web development reference
+- **"AWS Documentation" by Amazon Web Services** - Comprehensive cloud service guides
+- **"Kubernetes Official Docs" by Cloud Native Computing Foundation** - Container orchestration mastery
+- **"React Official Tutorial" by Facebook** - Frontend framework fundamentals
+- **"MDN Web Docs" by Mozilla** - Web development reference
+- **"Python Official Documentation" by Python Software Foundation** - Language reference
 
 #### Open Source Projects:
-- **Contribute to React.js** - Frontend framework development
-- **Kubernetes Community** - Cloud-native computing
-- **TensorFlow** - Machine learning framework contributions
+- **"React.js" by Facebook** - Frontend framework development
+- **"Kubernetes Community" by Cloud Native Computing Foundation** - Cloud-native computing
+- **"TensorFlow" by Google** - Machine learning framework contributions
 
 ### 📖 Books & Publications:
-- **"Designing Data-Intensive Applications" by Martin Kleppmann** - System design bible
-- **"Clean Code" by Robert C. Martin** - Code quality and maintainability
-- **"The DevOps Handbook" by Gene Kim** - DevOps culture and practices
-- **"System Design Interview" by Alex Xu** - Technical interview preparation
+- **"Designing Data-Intensive Applications" by O'Reilly Media** - System design bible
+- **"Clean Code" by Pearson** - Code quality and maintainability
+- **"The DevOps Handbook" by IT Revolution Press** - DevOps culture and practices
+- **"System Design Interview" by ByteByteGo** - Technical interview preparation
+- **"Hands-On Machine Learning" by O'Reilly Media** - Practical ML implementation
 
 ## 5. LEARNING ROADMAP
 
 ### Phase 1 (1-3 months) - Foundation Building:
-1. **Cloud Fundamentals** - AWS/Azure basics (40 hours)
-2. **Docker Containerization** - Container basics (20 hours)
+1. **Cloud Fundamentals** - "AWS Fundamentals" by Amazon Web Services (40 hours)
+2. **Docker Containerization** - "Docker and Kubernetes: The Complete Guide" by Stephen Grider (20 hours)
 3. **API Development** - REST/GraphQL principles (30 hours)
 4. **Git Advanced** - Branching strategies and collaboration (10 hours)
 
 ### Phase 2 (3-6 months) - Intermediate Development:
-1. **Kubernetes Orchestration** - Container management (50 hours)
+1. **Kubernetes Orchestration** - "AWS Developer Learning Path" by Pluralsight (50 hours)
 2. **CI/CD Pipelines** - Automated deployment (40 hours)
-3. **System Design Basics** - Scalability patterns (60 hours)
+3. **System Design Basics** - "System Design Interview Prep" by Pluralsight (60 hours)
 4. **Database Optimization** - Performance tuning (30 hours)
 
 ### Phase 3 (6-12 months) - Advanced Specialization:
-1. **Cloud Architecture** - Multi-service design (80 hours)
-2. **Technical Leadership** - Team and project management (40 hours)
+1. **Cloud Architecture** - "AWS Solutions Architect Associate" by Amazon Web Services (80 hours)
+2. **Technical Leadership** - "Leading Technical Teams" by LinkedIn Learning (40 hours)
 3. **Advanced System Design** - Large-scale systems (100 hours)
 4. **Industry Specialization** - Domain-specific expertise (60 hours)
 
 ## 6. MARKET INSIGHTS
+- **Skill Demand:** Cloud computing skills are in the top 10% of demanded skills globally
+- **Salary Impact:** AWS certification can increase salary by 25-30% ($15,000-$25,000 annually)
+- **Career Progression:** These skills enable progression to Senior Engineer, Tech Lead, or Solutions Architect roles
+- **Industry Growth:** Cloud computing market growing at 15% CAGR, creating high demand for skilled professionals
+- **Remote Opportunities:** 85% of cloud computing roles offer remote work options
 
-### 📈 Skill Demand Analysis:
-- **Cloud Computing:** 85% of companies adopting cloud-first strategies
-- **DevOps:** 73% increase in job postings over last 2 years
-- **System Design:** Required for 90% of senior engineering roles
-- **API Development:** Growing 45% annually with microservices adoption
-
-### 💰 Salary Impact:
-- **Cloud Certification:** +$15,000-25,000 average salary increase
-- **DevOps Skills:** +$20,000-30,000 for experienced professionals
-- **System Design Expertise:** +$25,000-40,000 for senior roles
-- **Combined Skills:** Potential 40-60% salary increase over 2-3 years
-
-### 🚀 Career Progression:
-- **Short-term:** Senior Developer/Technical Lead roles
-- **Mid-term:** Engineering Manager/Principal Engineer positions
-- **Long-term:** Director of Engineering/CTO opportunities
-
-## 📊 Next Steps:
-1. **Start with Phase 1 priorities** - Focus on cloud and containerization
-2. **Set learning schedule** - Dedicate 10-15 hours per week
-3. **Join communities** - AWS User Groups, Kubernetes meetups
-4. **Build portfolio projects** - Demonstrate new skills practically
-5. **Track progress** - Use learning management tools and certifications
-
-*Estimated total learning time: 200-300 hours over 12 months*
-*Investment: $500-1,000 in courses and certifications*
-*Expected ROI: 40-60% salary increase within 2 years*"""
+**Next Steps:** Start with Phase 1 courses, focus on hands-on projects, and consider pursuing AWS certification within 6 months for maximum career impact."""
 
 def optimize_resume(resume_text: str, job_description: str):
     """

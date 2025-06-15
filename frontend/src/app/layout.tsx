@@ -3,7 +3,6 @@ import React from "react";
 import "./globals.css";
 import { ClerkProvider } from "@clerk/nextjs";
 import { ThemeProvider } from "@/contexts/ThemeContext";
-import { ThemeToggle } from "@/components/ui/ThemeToggle";
 
 export const metadata: Metadata = {
   title: "Career Compass AI",
@@ -22,29 +21,52 @@ export default function RootLayout({
       signInUrl="/login"
       signUpUrl="/signup"
     >
-      <html lang="en" suppressHydrationWarning>
+      <html lang="en" className="light" suppressHydrationWarning>
         <head>
           <script
             dangerouslySetInnerHTML={{
               __html: `
-                try {
-                  const savedTheme = localStorage.getItem('theme');
-                  const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-                  const theme = savedTheme || (systemPrefersDark ? 'dark' : 'light');
-                  document.documentElement.classList.add(theme);
-                } catch (e) {
-                  document.documentElement.classList.add('light');
-                }
+                (function() {
+                  function applyTheme() {
+                    try {
+                      var savedTheme = localStorage.getItem('theme');
+                      var systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                      var theme = savedTheme || (systemPrefersDark ? 'dark' : 'light');
+                      
+                      // Ensure we remove any existing theme classes first
+                      document.documentElement.classList.remove('light', 'dark');
+                      // Add the correct theme class
+                      document.documentElement.classList.add(theme);
+                      // Set the color scheme
+                      document.documentElement.style.colorScheme = theme;
+                      
+                      // Store the theme for consistency
+                      localStorage.setItem('theme', theme);
+                      
+                      console.log('Theme applied:', theme);
+                    } catch (e) {
+                      console.warn('Theme initialization error:', e);
+                      document.documentElement.classList.remove('light', 'dark');
+                      document.documentElement.classList.add('light');
+                      document.documentElement.style.colorScheme = 'light';
+                    }
+                  }
+                  
+                  // Apply theme immediately
+                  applyTheme();
+                  
+                  // Also apply when DOM is ready
+                  if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', applyTheme);
+                  }
+                })();
               `,
             }}
           />
         </head>
-        <body className="font-sans antialiased" suppressHydrationWarning>
+        <body className="font-sans antialiased transition-colors duration-300 bg-white dark:bg-gray-900 text-gray-900 dark:text-white min-h-screen" suppressHydrationWarning>
           <ThemeProvider>
-            <div className="relative min-h-screen bg-white dark:bg-gray-900 text-gray-900 dark:text-white transition-colors duration-300">
-              <ThemeToggle />
-              {children}
-            </div>
+            {children}
           </ThemeProvider>
         </body>
       </html>

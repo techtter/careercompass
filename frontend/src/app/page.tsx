@@ -1,6 +1,8 @@
 import React from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
+import CompanyMarquee from "@/components/ui/CompanyMarquee";
 
 export default function HomePage() {
   return (
@@ -56,16 +58,19 @@ export default function HomePage() {
               </Link>
             </nav>
 
-            {/* CTA Button */}
-            <Link href="/signup">
-              <Button>Get Started</Button>
-            </Link>
+            {/* Right side with Theme Toggle and CTA Button */}
+            <div className="flex items-center space-x-4">
+              <ThemeToggle />
+              <Link href="/signup">
+                <Button>Get Started</Button>
+              </Link>
+            </div>
           </div>
         </div>
       </header>
 
       {/* Hero Section */}
-      <section className="bg-gray-50 dark:bg-gray-800 py-20">
+      <section className="bg-gray-50 dark:bg-gray-800 pt-20 pb-2">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           {/* Badge */}
           <div className="inline-flex items-center px-4 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-full text-sm font-medium text-gray-700 dark:text-gray-300 mb-8 shadow-sm">
@@ -75,7 +80,7 @@ export default function HomePage() {
           {/* Main Heading */}
           <h1 className="text-5xl md:text-6xl font-bold text-gray-900 dark:text-white mb-6">
             Navigate Your Career with{" "}
-            <span className="text-blue-600 dark:text-blue-400">AI Guidance</span>
+            <span className="animate-ai-guidance">AI Guidance</span>
           </h1>
 
           {/* Subtitle */}
@@ -85,33 +90,16 @@ export default function HomePage() {
           </p>
 
           {/* CTA Buttons */}
-          <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
+          <div className="flex flex-col sm:flex-row gap-4 justify-center mb-2">
             <Link href="/signup">
               <Button size="lg">Start Your Journey</Button>
-            </Link>
-            <Link href="/demo">
-              <Button variant="outline" size="lg">Watch Demo</Button>
             </Link>
           </div>
         </div>
       </section>
 
-      {/* Company Logos */}
-      <section className="py-16 bg-white dark:bg-gray-900">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <p className="text-center text-gray-500 dark:text-gray-400 text-sm font-medium mb-8">
-            Trusted by professionals at leading companies
-          </p>
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-8 items-center justify-items-center opacity-60">
-            <div className="text-2xl font-bold text-gray-400 dark:text-gray-500">Microsoft</div>
-            <div className="text-2xl font-bold text-gray-400 dark:text-gray-500">Google</div>
-            <div className="text-2xl font-bold text-gray-400 dark:text-gray-500">Apple</div>
-            <div className="text-2xl font-bold text-gray-400 dark:text-gray-500">Amazon</div>
-            <div className="text-2xl font-bold text-gray-400 dark:text-gray-500">Netflix</div>
-            <div className="text-2xl font-bold text-gray-400 dark:text-gray-500">Tesla</div>
-          </div>
-        </div>
-      </section>
+      {/* Company Logos Marquee */}
+      <CompanyMarquee />
 
       {/* Features Section */}
       <section className="py-20 bg-gray-50 dark:bg-gray-800">
@@ -241,7 +229,7 @@ export default function HomePage() {
           </div>
           
           <div className="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400">
-            <p>&copy; 2024 Career Compass AI. All rights reserved.</p>
+            <p>&copy; 2025 Career Compass AI. All rights reserved.</p>
           </div>
         </div>
       </footer>

@@ -1,9 +1,6 @@
 """
-Job Services Module for CareerCompassAI
-
-This module provides job recommendation services using multiple job APIs
-and AI-powered matching to deliver personalized job recommendations.
-ONLY REAL JOBS - NO MOCK DATA.
+Enhanced Job Services with Caching for Career Compass AI
+Provides real job recommendations from multiple APIs with intelligent caching
 """
 
 import asyncio
@@ -13,47 +10,14 @@ import os
 import re
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
-
-def _generate_realistic_apply_url(company: str, title: str, job_id: str = None) -> str:
-    """
-    Generate realistic apply URLs for different job boards
-    """
-    if not job_id:
-        job_id = str(random.randint(3000000000, 3999999999))
-    
-    # Choose random job board with weighted probability
-    job_boards = [
-        ("linkedin", 0.4),  # 40% LinkedIn
-        ("indeed", 0.3),    # 30% Indeed
-        ("glassdoor", 0.15), # 15% Glassdoor
-        ("company", 0.15)   # 15% Company website
-    ]
-    
-    # Select job board based on weights
-    rand = random.random()
-    cumulative = 0
-    selected_board = "linkedin"
-    
-    for board, weight in job_boards:
-        cumulative += weight
-        if rand <= cumulative:
-            selected_board = board
-            break
-    
-    # Generate URL based on selected board
-    if selected_board == "linkedin":
-        return f"https://www.linkedin.com/jobs/view/{job_id}"
-    elif selected_board == "indeed":
-        return f"https://www.indeed.com/viewjob?jk={job_id[:8]}"
-    elif selected_board == "glassdoor":
-        return f"https://www.glassdoor.com/job-listing/{job_id}"
-    else:  # company website
-        company_domain = company.lower().replace(' ', '').replace(',', '').replace('.', '')
-        return f"https://careers.{company_domain}.com/jobs/{job_id}"
+from job_api_services import JobAggregator, validate_job_posting, check_job_availability
+from job_cache import (
+    get_cached_jobs, cache_jobs, get_user_cached_jobs, cache_user_jobs,
+    invalidate_user_cache, refresh_user_cache, get_cache_stats
+)
 
 # Import real job API services
 try:
-    from job_api_services import JobAggregator, validate_job_posting, check_job_availability
     REAL_APIS_AVAILABLE = True
     print("✅ Real job API services loaded successfully")
 except ImportError as e:
@@ -77,116 +41,167 @@ else:
 
 def _extract_country_from_location(location: str) -> str:
     """
-    Extract country name from location string using word boundaries to prevent partial matches.
-    Enhanced to handle more location formats and provide better fallbacks.
+    Extract country from location string with enhanced Netherlands detection.
+    Prioritizes Netherlands and European countries for better job matching.
     """
     if not location:
         return ""
     
     location_lower = location.lower().strip()
     
-    # Country mapping with word boundary patterns - enhanced with more variations
-    country_patterns = {
-        r'\busa\b|\bus\b|\bunited states\b|\bamerica\b|\bunited states of america\b': 'United States',
-        r'\buk\b|\bunited kingdom\b|\bbritain\b|\bengland\b|\bscotland\b|\bwales\b': 'United Kingdom',
-        r'\bcanada\b': 'Canada',
-        r'\bgermany\b|\bdeutschland\b|\bde\b': 'Germany',
-        r'\bfrance\b|\bfr\b': 'France',
-        r'\bspain\b|\bespaña\b|\bes\b': 'Spain',
-        r'\bitaly\b|\bitalia\b|\bit\b': 'Italy',
-        r'\bnetherlands\b|\bholland\b|\bnl\b|\bdutch\b': 'Netherlands',
-        r'\bbelgium\b|\bbelgië\b|\bbe\b': 'Belgium',
-        r'\bswitzerland\b|\bschweiz\b|\bch\b': 'Switzerland',
-        r'\baustria\b|\bösterreich\b|\bat\b': 'Austria',
-        r'\bsweden\b|\bsverige\b|\bse\b': 'Sweden',
-        r'\bnorway\b|\bnorge\b|\bno\b': 'Norway',
-        r'\bdenmark\b|\bdanmark\b|\bdk\b': 'Denmark',
-        r'\bfinland\b|\bsuomi\b|\bfi\b': 'Finland',
-        r'\bindia\b|\bbharat\b|\bin\b': 'India',
-        r'\bchina\b|\bprc\b|\bcn\b': 'China',
-        r'\bjapan\b|\bnippon\b|\bjp\b': 'Japan',
-        r'\bsingapore\b|\bsg\b': 'Singapore',
-        r'\baustralia\b|\bau\b': 'Australia',
-        r'\bbrazil\b|\bbrasil\b|\bbr\b': 'Brazil',
-        r'\bmexico\b|\bméxico\b|\bmx\b': 'Mexico',
-        r'\bireland\b|\béire\b|\bie\b': 'Ireland',
-        r'\bpoland\b|\bpolska\b|\bpl\b': 'Poland',
-        r'\bczech republic\b|\bczechia\b|\bcz\b': 'Czech Republic',
-        r'\buae\b|\bunited arab emirates\b|\bemirati\b': 'UAE',
-        r'\bportugal\b|\bpt\b': 'Portugal',
-        r'\brussia\b|\brussian federation\b|\bru\b': 'Russia',
-        r'\bukraine\b|\bua\b': 'Ukraine',
-        r'\bturkey\b|\bturkiye\b|\btr\b': 'Turkey',
-        r'\bisrael\b|\bil\b': 'Israel',
-        r'\bsouth africa\b|\bza\b': 'South Africa',
-        r'\bsouth korea\b|\bkorea\b|\bkr\b': 'South Korea',
-        r'\bnew zealand\b|\bnz\b': 'New Zealand'
-    }
-    
-    # Check for country patterns using word boundaries
-    for pattern, country in country_patterns.items():
-        if re.search(pattern, location_lower):
-            return country
-    
-    # Check for US state abbreviations and full names
-    us_states = {
-        'ca': 'United States', 'california': 'United States',
-        'ny': 'United States', 'new york': 'United States',
-        'tx': 'United States', 'texas': 'United States',
-        'fl': 'United States', 'florida': 'United States',
-        'wa': 'United States', 'washington': 'United States',
-        'il': 'United States', 'illinois': 'United States',
-        'pa': 'United States', 'pennsylvania': 'United States',
-        'oh': 'United States', 'ohio': 'United States',
-        'ga': 'United States', 'georgia': 'United States',
-        'nc': 'United States', 'north carolina': 'United States',
-        'mi': 'United States', 'michigan': 'United States',
-        'nj': 'United States', 'new jersey': 'United States',
-        'va': 'United States', 'virginia': 'United States',
-        'tn': 'United States', 'tennessee': 'United States',
-        'az': 'United States', 'arizona': 'United States',
-        'ma': 'United States', 'massachusetts': 'United States',
-        'in': 'United States', 'indiana': 'United States',
-        'mo': 'United States', 'missouri': 'United States',
-        'md': 'United States', 'maryland': 'United States',
-        'wi': 'United States', 'wisconsin': 'United States',
-        'co': 'United States', 'colorado': 'United States',
-        'mn': 'United States', 'minnesota': 'United States'
-    }
-    
-    for state, country in us_states.items():
-        pattern = rf'\b{re.escape(state)}\b'
-        if re.search(pattern, location_lower):
-            return country
-    
-    # Check for major European cities
-    european_cities = {
+    # Enhanced country mapping with Netherlands priority
+    country_mapping = {
+        # Netherlands variations (highest priority)
+        'netherlands': 'Netherlands',
+        'holland': 'Netherlands', 
+        'nl': 'Netherlands',
+        'nederland': 'Netherlands',
+        'dutch': 'Netherlands',
+        
+        # Netherlands cities
         'amsterdam': 'Netherlands', 'rotterdam': 'Netherlands', 'utrecht': 'Netherlands', 'the hague': 'Netherlands', 'eindhoven': 'Netherlands',
-        'berlin': 'Germany', 'munich': 'Germany', 'hamburg': 'Germany', 'frankfurt': 'Germany', 'cologne': 'Germany', 'stuttgart': 'Germany',
-        'london': 'United Kingdom', 'manchester': 'United Kingdom', 'edinburgh': 'United Kingdom', 'birmingham': 'United Kingdom', 'bristol': 'United Kingdom',
-        'paris': 'France', 'lyon': 'France', 'marseille': 'France', 'toulouse': 'France',
-        'stockholm': 'Sweden', 'gothenburg': 'Sweden', 'malmö': 'Sweden',
-        'oslo': 'Norway', 'bergen': 'Norway', 'trondheim': 'Norway',
-        'copenhagen': 'Denmark', 'aarhus': 'Denmark',
-        'helsinki': 'Finland', 'tampere': 'Finland',
-        'zurich': 'Switzerland', 'geneva': 'Switzerland', 'basel': 'Switzerland',
-        'vienna': 'Austria', 'salzburg': 'Austria', 'graz': 'Austria',
-        'dublin': 'Ireland', 'cork': 'Ireland',
-        'madrid': 'Spain', 'barcelona': 'Spain', 'valencia': 'Spain',
-        'rome': 'Italy', 'milan': 'Italy', 'naples': 'Italy', 'turin': 'Italy',
-        'brussels': 'Belgium', 'antwerp': 'Belgium', 'ghent': 'Belgium'
+        'groningen': 'Netherlands', 'tilburg': 'Netherlands', 'almere': 'Netherlands', 'breda': 'Netherlands', 'nijmegen': 'Netherlands',
+        'apeldoorn': 'Netherlands', 'haarlem': 'Netherlands', 'arnhem': 'Netherlands', 'zaanstad': 'Netherlands', 'haarlemmermeer': 'Netherlands',
+        
+        # Other European countries
+        'germany': 'Germany', 'deutschland': 'Germany', 'de': 'Germany',
+        'berlin': 'Germany', 'munich': 'Germany', 'hamburg': 'Germany', 'cologne': 'Germany', 'frankfurt': 'Germany',
+        
+        'united kingdom': 'United Kingdom', 'uk': 'United Kingdom', 'britain': 'United Kingdom', 'england': 'United Kingdom',
+        'london': 'United Kingdom', 'manchester': 'United Kingdom', 'birmingham': 'United Kingdom',
+        
+        'france': 'France', 'french': 'France', 'fr': 'France',
+        'paris': 'France', 'lyon': 'France', 'marseille': 'France',
+        
+        'belgium': 'Belgium', 'brussels': 'Belgium', 'antwerp': 'Belgium',
+        'switzerland': 'Switzerland', 'zurich': 'Switzerland', 'geneva': 'Switzerland',
+        'austria': 'Austria', 'vienna': 'Austria',
+        'sweden': 'Sweden', 'stockholm': 'Sweden',
+        'norway': 'Norway', 'oslo': 'Norway',
+        'denmark': 'Denmark', 'copenhagen': 'Denmark',
+        'finland': 'Finland', 'helsinki': 'Finland',
+        'italy': 'Italy', 'rome': 'Italy', 'milan': 'Italy',
+        'spain': 'Spain', 'madrid': 'Spain', 'barcelona': 'Spain',
+        
+        # North America
+        'united states': 'United States', 'usa': 'United States', 'us': 'United States', 'america': 'United States',
+        'canada': 'Canada',
+        
+        # Other regions
+        'australia': 'Australia', 'singapore': 'Singapore', 'india': 'India', 'japan': 'Japan', 'china': 'China'
     }
     
-    for city, country in european_cities.items():
-        if city in location_lower:
+    # Enhanced regex patterns for Netherlands detection
+    netherlands_patterns = [
+        r'\bnetherlands\b|\bholland\b|\bnl\b|\bdutch\b',
+        r'\bamsterdam\b|\brotterdam\b|\butrecht\b|\bthe hague\b|\beindhoven\b',
+        r'\bgroningen\b|\btilburg\b|\balmere\b|\bbreda\b|\bnijmegen\b'
+    ]
+    
+    # Check for Netherlands patterns first (priority)
+    for pattern in netherlands_patterns:
+        if re.search(pattern, location_lower):
+            print(f"🇳🇱 Netherlands detected from location: '{location}' -> pattern: {pattern}")
+            return 'Netherlands'
+    
+    # Check other country mappings
+    for location_key, country in country_mapping.items():
+        if location_key in location_lower:
+            print(f"🌍 Country detected from location: '{location}' -> '{location_key}' -> {country}")
             return country
     
-    # If no specific country found but location contains European indicators
-    if any(indicator in location_lower for indicator in ['europe', 'european', 'eu']):
-        return 'Europe'  # Generic European location
+    # Check for common location patterns (City, Country)
+    if ',' in location:
+        parts = [part.strip() for part in location.split(',')]
+        if len(parts) >= 2:
+            country_part = parts[-1].lower()  # Last part is usually country
+            for location_key, country in country_mapping.items():
+                if location_key == country_part:
+                    print(f"🌍 Country detected from location part: '{country_part}' -> {country}")
+                    return country
     
-    # Return original location if no mapping found (could be a valid country name we don't recognize)
-    return location.title()  # Return with proper capitalization
+    print(f"🌍 No country detected from location: '{location}'")
+    return ""
+
+def _prioritize_jobs_by_location(jobs: List[Dict[str, Any]], user_location: str, user_country: str) -> List[Dict[str, Any]]:
+    """
+    Prioritize jobs based on user's location and country.
+    Netherlands users get Netherlands jobs first, then European jobs, then global jobs.
+    """
+    if not jobs:
+        return jobs
+    
+    print(f"🎯 Prioritizing {len(jobs)} jobs for user location: {user_location}, country: {user_country}")
+    
+    # Categorize jobs by location priority
+    netherlands_jobs = []
+    european_jobs = []
+    global_jobs = []
+    
+    # Enhanced Netherlands detection patterns
+    netherlands_indicators = [
+        # Country names
+        'netherlands', 'holland', 'nederland', 'nl',
+        # Major cities
+        'amsterdam', 'rotterdam', 'utrecht', 'the hague', 'den haag', 'eindhoven', 
+        'groningen', 'tilburg', 'almere', 'breda', 'nijmegen', 'apeldoorn', 
+        'haarlem', 'arnhem', 'zaanstad', 'haarlemmermeer', 'veldhoven',
+        # Dutch provinces
+        'noord-holland', 'zuid-holland', 'noord-brabant', 'zuid-brabant',
+        'gelderland', 'overijssel', 'limburg', 'friesland', 'drenthe',
+        'flevoland', 'zeeland', 'utrecht', 'groningen'
+    ]
+    
+    european_countries = {
+        'Germany', 'United Kingdom', 'France', 'Belgium', 'Switzerland', 'Austria',
+        'Sweden', 'Norway', 'Denmark', 'Finland', 'Italy', 'Spain', 'Portugal'
+    }
+    
+    for job in jobs:
+        job_location = job.get('location', '').lower()
+        job_country = job.get('country', '').lower()
+        
+        # Enhanced Netherlands detection
+        is_netherlands_job = False
+        
+        if user_country == 'Netherlands':
+            # Check for Netherlands indicators in location or country
+            for indicator in netherlands_indicators:
+                if indicator in job_location or indicator in job_country:
+                    is_netherlands_job = True
+                    break
+        
+        if is_netherlands_job:
+            netherlands_jobs.append(job)
+            print(f"🇳🇱 Netherlands job: {job.get('title', 'Unknown')} at {job.get('company', 'Unknown')} - {job.get('location', 'Unknown')}")
+        
+        # Check if job is in Europe (for Netherlands users)
+        elif (user_country == 'Netherlands' and 
+              any(country.lower() in job_location or country.lower() in job_country 
+                  for country in european_countries)):
+            european_jobs.append(job)
+            print(f"🇪🇺 European job: {job.get('title', 'Unknown')} at {job.get('company', 'Unknown')} - {job.get('location', 'Unknown')}")
+        
+        # Check if job matches user's country (for non-Netherlands users)
+        elif (user_country and user_country != 'Netherlands' and
+              (user_country.lower() in job_location or user_country.lower() in job_country)):
+            netherlands_jobs.append(job)  # Use same priority as Netherlands jobs for user's country
+            print(f"🏠 Local job for {user_country}: {job.get('title', 'Unknown')} at {job.get('company', 'Unknown')} - {job.get('location', 'Unknown')}")
+        
+        else:
+            global_jobs.append(job)
+            print(f"🌍 Global job: {job.get('title', 'Unknown')} at {job.get('company', 'Unknown')} - {job.get('location', 'Unknown')}")
+    
+    # Combine jobs with location priority
+    prioritized_jobs = netherlands_jobs + european_jobs + global_jobs
+    
+    print(f"📊 Job prioritization results:")
+    print(f"   🇳🇱 Netherlands/Local jobs: {len(netherlands_jobs)}")
+    print(f"   🇪🇺 European jobs: {len(european_jobs)}")
+    print(f"   🌍 Global jobs: {len(global_jobs)}")
+    print(f"   📋 Total prioritized jobs: {len(prioritized_jobs)}")
+    
+    return prioritized_jobs
 
 def _calculate_job_relevance_score(job: Dict[str, Any], user_skills: List[str], user_jobs: List[str], user_experience: str) -> int:
     """
@@ -647,12 +662,22 @@ async def get_real_job_recommendations(
     skills: List[str], 
     experience: str, 
     last_two_jobs: List[str], 
-    location: Optional[str] = None
+    location: Optional[str] = None,
+    use_cache: bool = True
 ) -> List[Dict[str, Any]]:
     """
-    Get real job recommendations from multiple job APIs
+    Get real job recommendations from multiple job APIs with caching
     """
-    print("🌐 Starting real job API search...")
+    print("🌐 Starting real job API search with caching...")
+    
+    # Check cache first if enabled
+    if use_cache:
+        cached_jobs = get_cached_jobs(skills, experience, last_two_jobs, location)
+        if cached_jobs:
+            print(f"🎯 CACHE HIT: Returning {len(cached_jobs)} cached jobs")
+            return cached_jobs
+    
+    print("🔍 CACHE MISS: Fetching fresh jobs from APIs...")
     
     # Always try RemoteOK API first (no API key required)
     remoteok_jobs = []
@@ -858,7 +883,14 @@ async def get_real_job_recommendations(
             filtered_jobs.sort(key=lambda x: x.get('match_score', 0), reverse=True)
         
         print(f"✅ Returning {len(filtered_jobs)} highly relevant job recommendations")
-        return filtered_jobs[:15]  # Return top 15 most relevant jobs
+        final_jobs = filtered_jobs[:15]  # Return top 15 most relevant jobs
+        
+        # Cache the results for future requests
+        if use_cache and final_jobs:
+            cache_jobs(skills, experience, last_two_jobs, final_jobs, location, ttl_minutes=30)
+            print(f"💾 CACHED: Stored {len(final_jobs)} jobs for 30 minutes")
+        
+        return final_jobs
     else:
         print("❌ No real jobs found from any API")
         return []
@@ -917,78 +949,172 @@ async def get_personalized_job_recommendations(
     skills: List[str], 
     experience: str, 
     last_two_jobs: List[str], 
-    location: Optional[str] = None
+    location: Optional[str] = None,
+    user_id: Optional[str] = None,
+    use_cache: bool = True
 ) -> List[Dict[str, Any]]:
     """
-    Get personalized job recommendations based on user profile.
-    ONLY RETURNS REAL JOBS FROM APIS - NO MOCK DATA.
-    
-    Args:
-        skills: List of user's skills
-        experience: User's experience description
-        last_two_jobs: User's last two job titles
-        location: Preferred job location (optional)
-    
-    Returns:
-        List of real job recommendations or empty list if no real jobs found
+    Get personalized job recommendations using REAL job APIs with enhanced location prioritization and caching.
+    NO MOCK DATA - Only real jobs from legitimate job APIs.
     """
+    if not REAL_APIS_AVAILABLE:
+        print("❌ Real job APIs not available")
+        return []
+    
+    # Check user-specific cache first if user_id provided
+    if use_cache and user_id:
+        cached_user_jobs = get_user_cached_jobs(user_id)
+        if cached_user_jobs:
+            print(f"👤 USER CACHE HIT: Returning {len(cached_user_jobs)} cached jobs for user {user_id}")
+            return cached_user_jobs
+    
+    # Check general profile cache
+    if use_cache:
+        cached_jobs = get_cached_jobs(skills, experience, last_two_jobs, location)
+        if cached_jobs:
+            print(f"🎯 PROFILE CACHE HIT: Returning {len(cached_jobs)} cached jobs")
+            # Also cache for user if user_id provided
+            if user_id:
+                profile_data = {
+                    'skills': skills,
+                    'experience': experience,
+                    'last_jobs': last_two_jobs,
+                    'location': location
+                }
+                cache_user_jobs(user_id, cached_jobs, profile_data)
+            return cached_jobs
+    
+    print("🔍 CACHE MISS: Fetching fresh personalized jobs from APIs...")
+    
+    # Extract country from location for better job targeting
+    user_country = _extract_country_from_location(location) if location else ""
+    
+    print(f"🔍 Generating job recommendations for:")
+    print(f"   Skills: {skills}")
+    print(f"   Experience: {experience}")
+    print(f"   Last jobs: {last_two_jobs}")
+    print(f"   Location: {location}")
+    print(f"   Detected Country: {user_country}")
+    
     try:
-        print(f"🔍 Searching for REAL job recommendations:")
-        print(f"   Skills: {skills}")
-        print(f"   Experience: {experience}")
-        print(f"   Last jobs: {last_two_jobs}")
-        print(f"   Location: {location}")
+        # Initialize job aggregator
+        job_aggregator = JobAggregator()
         
-        # Extract country from location for better job matching
-        user_country = _extract_country_from_location(location) if location else None
-        print(f"   Detected Country: {user_country}")
+        # Create search query from skills and job titles
+        search_terms = []
         
-        # Only try to get real job recommendations from APIs
-        real_jobs = []
-        print("🌐 Attempting to fetch REAL job recommendations from multiple APIs...")
-        print("   📡 Trying RemoteOK API (Remote jobs - no API key required)")
-        if REAL_APIS_AVAILABLE:
-            print("   📡 Trying JSearch API (LinkedIn/Indeed)")
-            print("   📡 Trying Adzuna API (Indeed/LinkedIn aggregator)")
-        else:
-            print("   ⚠️  JSearch and Adzuna APIs not available (missing API keys)")
+        # Add job titles to search terms
+        if last_two_jobs:
+            for job_title in last_two_jobs[:2]:  # Use last 2 jobs
+                if job_title and len(job_title.strip()) > 0:
+                    # Clean job title for search
+                    clean_title = re.sub(r'[^\w\s]', ' ', job_title).strip()
+                    if clean_title:
+                        search_terms.append(clean_title)
         
-        if not USE_REAL_JOBS:
-            print("❌ Real job APIs are disabled via USE_REAL_JOBS environment variable")
-            print("📋 No jobs will be returned - configure API keys to enable real job search")
+        # Add key skills to search terms
+        if skills:
+            # Prioritize important technical skills
+            priority_skills = [
+                'Data Engineer', 'Software Engineer', 'Python', 'Java', 'Scala',
+                'AWS', 'Azure', 'GCP', 'Spark', 'Kafka', 'SQL', 'Machine Learning',
+                'DevOps', 'Kubernetes', 'Docker', 'Microservices'
+            ]
+            
+            for skill in skills:
+                if any(priority in skill for priority in priority_skills):
+                    search_terms.append(skill)
+                    if len(search_terms) >= 3:  # Limit search terms
+                        break
+        
+        # Fallback search terms if none found
+        if not search_terms:
+            search_terms = ['Software Engineer', 'Data Engineer', 'Developer']
+        
+        # Set location for API search
+        search_location = ""
+        search_country = ""
+        
+        if user_country:
+            search_country = user_country
+            if user_country == 'Netherlands':
+                search_location = "Netherlands"
+            elif user_country == 'Germany':
+                search_location = "Germany"
+            elif user_country == 'United Kingdom':
+                search_location = "United Kingdom"
+            else:
+                search_location = user_country
+        
+        # Search for jobs using multiple APIs
+        all_jobs = []
+        
+        for search_term in search_terms[:2]:  # Limit to 2 search terms to avoid rate limits
+            try:
+                print(f"🔍 Searching for '{search_term}' jobs in {search_location or 'global'}")
+                
+                jobs = await job_aggregator.search_all_apis(
+                    query=search_term,
+                    location=search_location,
+                    country=search_country
+                )
+                
+                if jobs:
+                    print(f"✅ Found {len(jobs)} jobs for '{search_term}'")
+                    all_jobs.extend(jobs)
+                else:
+                    print(f"❌ No jobs found for '{search_term}'")
+                    
+            except Exception as e:
+                print(f"❌ Error searching for '{search_term}': {e}")
+                continue
+        
+        if not all_jobs:
+            print("❌ No jobs found from any API")
             return []
         
-        try:
-            real_jobs = await get_real_job_recommendations(skills, experience, last_two_jobs, location)
-            if real_jobs:
-                print(f"✅ Successfully fetched {len(real_jobs)} REAL jobs from APIs")
-                # Log which APIs returned jobs
-                api_sources = set(job.get('source', 'Unknown') for job in real_jobs)
-                print(f"   📊 Sources: {', '.join(api_sources)}")
-                
-                # Apply advanced relevance and location scoring
-                scored_jobs = _prioritize_jobs_by_relevance_and_location(real_jobs, skills, last_two_jobs, experience, user_country)
-                
-                print(f"📊 Returning {len(scored_jobs)} real job recommendations")
-                return scored_jobs[:15]  # Return top 15 most relevant
-            else:
-                print("⚠️  Real APIs returned no jobs")
-        except Exception as e:
-            print(f"❌ Error fetching from real APIs: {e}")
-            real_jobs = []
-            
-        # No fallback to mock jobs - return empty list
-        print("📋 No real jobs found from any API source")
-        print("   💡 To enable real job sources:")
-        print("   - Set RAPID_API_KEY in .env for JSearch API (LinkedIn/Indeed)")
-        print("   - Set ADZUNA_APP_ID and ADZUNA_APP_KEY in .env for Adzuna API")
-        print("   - RemoteOK API requires no setup and should work automatically")
-        print("   - Check your internet connection")
-        print("❌ Returning empty job list - no mock data will be shown")
+        # Remove duplicates based on job title and company
+        unique_jobs = []
+        seen_jobs = set()
         
-        return []  # Return empty list instead of mock jobs
+        for job in all_jobs:
+            job_key = f"{job.get('title', '').lower()}_{job.get('company', '').lower()}"
+            if job_key not in seen_jobs:
+                seen_jobs.add(job_key)
+                unique_jobs.append(job)
+        
+        print(f"📋 Found {len(unique_jobs)} unique jobs after deduplication")
+        
+        # Prioritize jobs by location (Netherlands users get Netherlands jobs first)
+        prioritized_jobs = _prioritize_jobs_by_location(unique_jobs, location, user_country)
+        
+        # Limit to 15 jobs and ensure they're valid
+        final_jobs = []
+        for job in prioritized_jobs[:15]:
+            if validate_job_posting(job):
+                final_jobs.append(job)
+        
+        print(f"✅ Generated {len(final_jobs)} job recommendations")
+        
+        # Cache the results
+        if use_cache and final_jobs:
+            # Cache for general profile
+            cache_jobs(skills, experience, last_two_jobs, final_jobs, location, ttl_minutes=30)
+            print(f"💾 CACHED: Stored {len(final_jobs)} jobs for profile (30 minutes)")
+            
+            # Cache for specific user if user_id provided
+            if user_id:
+                profile_data = {
+                    'skills': skills,
+                    'experience': experience,
+                    'last_jobs': last_two_jobs,
+                    'location': location
+                }
+                cache_user_jobs(user_id, final_jobs, profile_data)
+                print(f"👤 USER CACHED: Stored {len(final_jobs)} jobs for user {user_id}")
+        
+        return final_jobs
         
     except Exception as e:
-        print(f"❌ Error in job recommendations: {e}")
-        print("❌ Returning empty job list due to error")
-        return []  # Return empty list instead of fallback mock jobs 
+        print(f"❌ Error generating job recommendations: {e}")
+        return [] 
